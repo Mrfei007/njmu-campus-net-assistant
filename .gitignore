@@ -1,0 +1,52 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build and release outputs
+build/
+dist/
+dist-builds/
+release/
+output/
+*.zip
+*.7z
+
+# Local research and test-runtime artifacts
+.research/
+.test*/
+.pytest_cache/
+.coverage
+
+# Runtime state and sensitive diagnostics
+.env
+.env.*
+config.json
+credentials.xml
+native-keepalive-state.json
+*.log
+*.jsonl
+*.pcap
+*.pcapng
+*.etl
+*.har
+*.sqlite
+*.sqlite3
+*.db
+
+# Machine-specific work notes and deployment helpers
+findings.md
+progress.md
+task_plan.md
+design-qa.md
+qa-automation-card.png
+tools/deploy_wake_release.ps1
+
+# Editor and OS metadata
+.idea/
+.vscode/
+.playwright-cli/
+.DS_Store
+Thumbs.db
+Desktop.ini
