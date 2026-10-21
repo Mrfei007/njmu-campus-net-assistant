@@ -1,0 +1,10 @@
+{
+  "version": "1.6.1",
+  "build_id": "20261021-193531",
+  "zip": "NJMU校园网自动化连接程序-1.6.1-Windows-x64.zip",
+  "size_bytes": 53958708,
+  "sha256": "1b1f6574b4dbaa34169e3629d58de0236dcae8255ae326f11ba5130be31eb8b3",
+  "recorded_at": "2026-10-21T19:36:13+08:00",
+  "source": "repo/app",
+  "bridge_sha256": "d5a55d3f76ab7f1bca746e343fad142bbf9e47b1d222742a776a5dadb7eedf84"
+}

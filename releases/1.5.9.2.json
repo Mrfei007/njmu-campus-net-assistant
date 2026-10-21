@@ -1,0 +1,14 @@
+{
+    "version":  "1.5.9.2",
+    "build_id":  "20261021-115824",
+    "zip":  "NJMU校园网自动化连接程序-1.5.9.2-Windows-x64.zip",
+    "size_bytes":  53944991,
+    "sha256":  "8fa68f939c65b436dbcc8d923b340bb9aa40f60d3e15016646ca7f705f265f15",
+    "recorded_at":  "2026-10-21T12:00:00+08:00",
+    "source":  "build1592 staging tree (pre-repo); identical to repo/app at tag v1.5.9.2",
+    "notes":  [
+                   "该包在建立单源仓库之前构建，构建目录为 build1592\\njmu-campus-net-assistant-1.5",
+                   "仓库建立后从 repo/app 重新构建验证：PYZ-00.pyz 与本源包字节一致（MD5 8BAE24097593AE4581FCAD9387D6D2DC），exe 版本资源 1.5.9.2",
+                   "zip 的 sha256 因压缩时间戳与 PyInstaller 非确定性而不同，属正常；模块内容一致"
+               ]
+}

@@ -4,7 +4,7 @@
 # ASCII only on purpose: Windows PowerShell 5.1 reads .ps1 as ANSI.
 #
 # Usage:
-#   pwsh .\build_release.ps1                  # build + copy zip/sha256 to the workspace root
+#   pwsh .\build_release.ps1                  # build + copy zip/sha256 to <workspace>\releases\<major.minor>.x
 #   pwsh .\build_release.ps1 -NoCopy          # build only (trial build, does not touch releases)
 #   pwsh .\build_release.ps1 -Vendor 'D:\x\vendor'
 #   pwsh .\build_release.ps1 -RebuildBridge   # force rebuilding native\bin\NpcapBridge.exe
@@ -14,12 +14,12 @@
 #   2. rebuild native\bin\NpcapBridge.exe when its source changed (or -RebuildBridge)
 #   3. run app\build_local.py (PyInstaller onedir + Rawether bridge + GUI smoke check + bridge selftest)
 #   4. verify the reported sha256 against the freshly computed hash
-#   5. copy the zip and its .sha256.txt to the output directory
-#   6. write release-records\<version>.json next to the output
+#   5. copy the zip and its .sha256.txt to <OutDir>\<major.minor>.x
+#   6. write releases\<version>.json into THIS repository (tracked: the version index)
 
 param(
-    [string]$Vendor = '<workspace>\build_stage\work\campus-net-assistant\vendor',
-    [string]$OutDir = $PSScriptRoot + '\..',
+    [string]$Vendor = '<workspace>\archive\build_stage\work\campus-net-assistant\vendor',
+    [string]$OutDir = $PSScriptRoot + '\..\releases',
     [switch]$NoCopy,
     [switch]$RebuildBridge
 )
@@ -101,12 +101,18 @@ Write-Host "sha256  : $computed"
 Write-Host "build id: $buildId"
 
 if (-not $NoCopy) {
-    $destination = (Resolve-Path -LiteralPath $OutDir).Path
+    # Layout convention: <workspace>\releases\<major.minor>.x\<zip + sha256>  (binaries, not tracked)
+    #                    <repo>\releases\<version>.json                     (index, tracked by git)
+    $family = (($version -split '\.')[0..1] -join '.') + '.x'
+    New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+    $outRoot = (Resolve-Path -LiteralPath $OutDir).Path
+    $destination = Join-Path $outRoot $family
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
     Copy-Item -LiteralPath $zip.FullName -Destination $destination -Force
     Copy-Item -LiteralPath $shaFile -Destination $destination -Force
     Write-Host "copied  : $(Join-Path $destination $zip.Name)"
 
-    $recordsDir = Join-Path $destination 'release-records'
+    $recordsDir = Join-Path $Here 'releases'
     New-Item -ItemType Directory -Force -Path $recordsDir | Out-Null
     $record = [ordered]@{
         version  = $version
@@ -117,9 +123,11 @@ if (-not $NoCopy) {
         recorded_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         source   = 'repo/app'
         bridge_sha256 = $bridgeSha
+        release_dir = $family
     }
     ($record | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $recordsDir "$version.json") -Encoding utf8
     Write-Host "record  : $(Join-Path $recordsDir "$version.json")"
+    Write-Host "next    : pwsh .\publish_release.ps1 -DryRun   # preview the GitHub upload, then drop -DryRun"
 } else {
     Write-Host 'NoCopy: release zip left in app\release'
 }
