@@ -104,6 +104,8 @@ def _keepalive_suffix(config: AppConfig, health: dict[str, object]) -> str:
         return "原生认证验证状态不可用，请重新验证"
     if reason in {"no-valid-send-record", "no-send-record"}:
         return "本程序原生保活尚无有效记录"
+    if reason == "no-successful-send":
+        return "后台保活近期没有成功发送，链路可能已断（正在确认）"
     if reason == "authentication-in-progress":
         return "原生保活正在认证"
     if reason == "process-unverified":

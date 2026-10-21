@@ -86,6 +86,10 @@ KEEPALIVE_WATCHDOG_UNKNOWN_REASONS = {
 KEEPALIVE_ABSENT_OBSERVATIONS_REQUIRED = 2
 # "无法判定"只告警不重建，限频一条/小时。
 KEEPALIVE_UNKNOWN_WARN_SECONDS = 60 * 60
+# 1.6.1：桥自己报告 link-down 后，把探测节奏从常规间隔缩短，尽快发现真的断网；
+# 但联网恢复仍要等"物理链路就绪"，断链期间不反复认证。
+LINK_DOWN_FAST_PROBE_SECONDS = 15
+LINK_DOWN_SIGNAL_MAX_RECORD_AGE = 5 * 60
 MANUAL_LOGOUT_MONITOR_PAUSE_SECONDS = 5 * 60
 MORNING_RECOVERY_HANDOFF_WAIT_SECONDS = 330
 VALID_OPERATORS = {"电信", "移动", "联通", "校园网"}
@@ -1178,6 +1182,29 @@ def _keepalive_heartbeat_is_fresh(health: dict) -> bool:
     return sends > 0 and last_status == 0 and 0 <= record_age <= 90
 
 
+def _link_down_signals(observation: Observation | None) -> tuple[bool, bool]:
+    """1.6.1：从一次工位观测里读出"链路断开"信号。
+
+    返回 (accelerate, defer)：
+
+    - ``accelerate``：桥刚刚因为 ``link-down`` 退出（记录仍在 5 分钟内）。这说明链路
+      确实断过，应当立刻探测，而不是等到下一个常规间隔，从而更快发现断网。
+    - ``defer``：本机当前物理链路/地址未就绪（``ethernet_ready`` 为 False）。此时无论
+      怎么认证都不可能成功，应只探测、不发起联网恢复，等网线/网络就绪后再走恢复流程。
+    """
+    fields = getattr(observation, "fields", None) or {}
+    health = fields.get("keepalive") or {}
+    accelerate = False
+    if str(health.get("exit_reason") or "") == "link-down":
+        try:
+            age = float(health.get("record_age_seconds") or 0.0)
+        except (TypeError, ValueError):
+            age = 0.0
+        accelerate = 0.0 <= age <= LINK_DOWN_SIGNAL_MAX_RECORD_AGE
+    defer = fields.get("ethernet_ready") is False
+    return accelerate, defer
+
+
 def _keepalive_watchdog_actionable(config: AppConfig, observation: Observation) -> bool:
     """1.6：只有"确定没有会话"才允许重建；unknown/存疑一律不动作。"""
     if not getattr(config, "keepalive_watchdog_enabled", True):
@@ -2208,6 +2235,8 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
     passive_wait_logged = False
     logged_suppression_until = ""
     previous_workstation_route = None
+    link_down_episode = False
+    link_down_defer_logged = False
     while True:
         if not once:
             config = load_config()
@@ -2429,6 +2458,35 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
         online, probe_source, probe_attempts = _monitor_probe(config)
         observation = getattr(config, "_workstation_observation", None) if config.connection_mode == CONNECTION_MODE_WORKSTATION_RUIJIE else None
         workstation_fields = observation.fields if observation is not None else {}
+        # 1.6.1：桥报 link-down 或物理链路未就绪时，缩短本轮等待，尽快确认是否真断网；
+        # 但"要等链路就绪才恢复"由 defer_link 单独表达，避免断链时白做认证。
+        accelerate, defer_link = _link_down_signals(observation)
+        link_down_fast = accelerate or defer_link
+        if link_down_fast and not link_down_episode:
+            link_down_episode = True
+            link_down_defer_logged = False
+            event(
+                "monitor-link-down-detected",
+                True,
+                "检测到链路断开信号：缩短探测间隔，等网线或网络就绪后再恢复联网",
+                link_down_signal="bridge-link-down" if accelerate else "ethernet-link-down",
+                keepalive_exit_reason=(
+                    str((observation.fields.get("keepalive") or {}).get("exit_reason") or "")
+                    if observation is not None else ""
+                ),
+                probe_source=probe_source,
+            )
+        elif link_down_episode and not link_down_fast:
+            link_down_episode = False
+            link_down_defer_logged = False
+            event(
+                "monitor-link-down-cleared",
+                True,
+                "链路信号已消失，恢复常规监测节奏",
+                probe_source=probe_source,
+            )
+        if link_down_fast:
+            sleep_seconds = min(sleep_seconds, LINK_DOWN_FAST_PROBE_SECONDS)
         if observation is not None:
             route_mode = observation.fields["route_mode"]
             previous_route = previous_workstation_route
@@ -2588,6 +2646,30 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
                     retry_after_seconds=remaining_seconds,
                 )
             elif _should_recover(probe_source, failures):
+                if defer_link:
+                    # 物理链路/地址还没就绪：认证必然失败，只探测等待，不发起恢复。
+                    if not link_down_defer_logged:
+                        link_down_defer_logged = True
+                        event(
+                            "monitor-recovery-deferred-link-down",
+                            True,
+                            "已发现断网，但本机链路尚未就绪；等待网线或网络恢复后再自动联网",
+                            failure_source=probe_source,
+                            retry_seconds=sleep_seconds,
+                        )
+                    if read_status().get("stage") != "link-down-waiting":
+                        write_status(
+                            "link-down-waiting",
+                            False,
+                            "网线或链路尚未就绪，正在快速探测等待网络恢复；断链期间不会反复发起认证",
+                            consecutive_failures=failures,
+                            retry_after_seconds=sleep_seconds,
+                            monitor_policy="active",
+                        )
+                    if once:
+                        return
+                    wait_for_monitor_signal(sleep_seconds)
+                    continue
                 pending_wake_request = open_wake_request() if not once else None
                 if pending_wake_request is not None:
                     wake_ok = _process_wake_request(config, pending_wake_request)
