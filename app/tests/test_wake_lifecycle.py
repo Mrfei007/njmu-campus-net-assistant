@@ -72,6 +72,11 @@ class WakeLifecycleTests(unittest.TestCase):
             "create_fallback_request_if_due": {"return_value": None},
             "_monitor_probe": {"return_value": (True, "microsoft-connect-test", 1)},
             "wait_for_monitor_signal": {"side_effect": StopMonitor},
+            # 1.6.2 的等待包装器会按 5 秒切片轮询；这些用例只关心"等待发生过"和
+            # 睡前的唤醒租约状态，因此把它直接映射回同一个 wait 模拟对象。
+            "_wait_for_next_probe": {
+                "side_effect": lambda seconds: self.mocks["wait_for_monitor_signal"](seconds),
+            },
         }
         self.mocks = {
             name: self.stack.enter_context(patch.object(controller, name, **kwargs))

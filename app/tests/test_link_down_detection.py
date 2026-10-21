@@ -11,7 +11,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -165,6 +165,103 @@ class MonitorLoopDeferTests(unittest.TestCase):
         recover.assert_called_once()
         self.assertNotIn("link-down-waiting", statuses)
         self.assertNotIn("monitor-recovery-deferred-link-down", events)
+
+
+class LinkDownPollingTests(unittest.TestCase):
+    """1.6.2：等待期间轮询桥记录；桥已报 link-down 时跳过第二次确认探测。"""
+
+    def setUp(self):
+        from datetime import datetime, timezone
+
+        self.state_file = ROOT / "tests" / ".tmp-keepalive-state.json"
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(lambda: self.state_file.unlink(missing_ok=True))
+        self.now = datetime.now(timezone.utc)
+        self._patch = patch.object(controller, "KEEPALIVE_STATUS_PATH", self.state_file)
+        self._patch.start()
+        self.addCleanup(self._patch.stop)
+
+    def write_state(self, **fields):
+        import json
+
+        record = {"schema_version": 2, "state": "exited", "exit_reason": "", "exited_at": ""}
+        record.update(fields)
+        self.state_file.write_text(json.dumps(record), encoding="utf-8")
+
+    def test_marker_only_accepts_link_down_exits(self):
+        self.write_state(exit_reason="link-down", exited_at="2026-10-21T12:41:59+00:00")
+        self.assertEqual(controller._bridge_link_down_marker(), "2026-10-21T12:41:59+00:00")
+        self.write_state(exit_reason="stop-requested", exited_at="2026-10-21T12:41:59+00:00")
+        self.assertEqual(controller._bridge_link_down_marker(), "")
+        self.state_file.write_text("{not json", encoding="utf-8")
+        self.assertEqual(controller._bridge_link_down_marker(), "")
+
+    def test_fresh_window_rejects_old_or_unparseable_records(self):
+        from datetime import timedelta
+
+        self.write_state(exit_reason="link-down", exited_at=self.now.isoformat())
+        self.assertTrue(controller._bridge_link_down_fresh())
+        self.write_state(exit_reason="link-down",
+                         exited_at=(self.now - timedelta(minutes=10)).isoformat())
+        self.assertFalse(controller._bridge_link_down_fresh())
+        self.write_state(exit_reason="link-down", exited_at="not-a-time")
+        self.assertFalse(controller._bridge_link_down_fresh())
+
+    def test_wait_returns_early_when_the_bridge_records_link_down(self):
+        waits, events = [], []
+        with (
+            patch.object(controller, "wait_for_monitor_signal",
+                         side_effect=lambda seconds: waits.append(seconds) or False),
+            patch.object(controller, "_bridge_link_down_marker",
+                         side_effect=["", "", "2026-10-21T12:41:59+00:00"]),
+            patch.object(controller, "event",
+                         side_effect=lambda stage, ok, message="", **kw: events.append((stage, kw))),
+        ):
+            controller._wait_for_next_probe(120)
+        self.assertEqual(len(waits), 2)
+        self.assertEqual([stage for stage, _ in events], ["monitor-probe-accelerated"])
+        self.assertGreater(events[0][1]["skipped_seconds"], 100)
+
+    def test_wait_uses_the_whole_interval_without_a_signal(self):
+        waits = []
+        with (
+            patch.object(controller, "wait_for_monitor_signal",
+                         side_effect=lambda seconds: waits.append(seconds) or False),
+            patch.object(controller, "_bridge_link_down_marker", return_value=""),
+            patch.object(controller, "event") as event,
+        ):
+            controller._wait_for_next_probe(120)
+        self.assertEqual(len(waits), 24)
+        event.assert_not_called()
+
+    def test_wake_signal_hands_control_back_immediately(self):
+        calls = []
+        with (
+            patch.object(controller, "wait_for_monitor_signal",
+                         side_effect=lambda seconds: calls.append(seconds) or True),
+            patch.object(controller, "_bridge_link_down_marker", return_value=""),
+            patch.object(controller, "event") as event,
+        ):
+            controller._wait_for_next_probe(120)
+        self.assertEqual(len(calls), 1)
+        event.assert_not_called()
+
+    def test_confirmation_probe_is_skipped_when_the_bridge_reported_link_down(self):
+        config = AppConfig(connection_mode="workstation_ruijie")
+        events = []
+        detail = Mock(return_value=(False, "workstation-access-failed"))
+        with (
+            patch.object(controller, "_online_detail", detail),
+            patch.object(controller, "_bridge_link_down_fresh", return_value=True),
+            patch.object(controller, "event",
+                         side_effect=lambda stage, ok, message="", **kw: events.append((stage, kw))),
+        ):
+            online, source, attempts = controller._monitor_probe(config)
+        self.assertFalse(online)
+        self.assertEqual(source, "workstation-access-failed")
+        self.assertEqual(attempts, 2)
+        self.assertEqual(detail.call_count, 1)
+        self.assertEqual(events[0][1]["second_probe_source"], "bridge-link-down")
 
 
 if __name__ == "__main__":

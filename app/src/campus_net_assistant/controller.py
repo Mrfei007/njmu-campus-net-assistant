@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import subprocess
 import time
@@ -26,6 +27,7 @@ from .edge import (
     logout_dorm_ethernet_session,
 )
 from .ethernet import EthernetInfo, get_ethernet, get_linked_physical_ethernet
+from .keepalive_status import STATUS_PATH as KEEPALIVE_STATUS_PATH
 from .keepalive_status import read_health as read_keepalive_health
 from .keepalive_status import session_mutex_held
 from .workstation_monitor import Observation, observe as observe_workstation
@@ -90,6 +92,9 @@ KEEPALIVE_UNKNOWN_WARN_SECONDS = 60 * 60
 # 但联网恢复仍要等"物理链路就绪"，断链期间不反复认证。
 LINK_DOWN_FAST_PROBE_SECONDS = 15
 LINK_DOWN_SIGNAL_MAX_RECORD_AGE = 5 * 60
+# 1.6.2：常规等待期间每 5 秒看一眼桥的记录，发现"链路断开退出"就提前开始下一轮探测。
+LINK_DOWN_POLL_SECONDS = 5
+LINK_DOWN_FRESH_SECONDS = 3 * 60
 MANUAL_LOGOUT_MONITOR_PAUSE_SECONDS = 5 * 60
 MORNING_RECOVERY_HANDOFF_WAIT_SECONDS = 330
 VALID_OPERATORS = {"电信", "移动", "联通", "校园网"}
@@ -1119,6 +1124,18 @@ def _monitor_probe(config: AppConfig, *, record: bool = True) -> tuple[bool, str
     first_observation = getattr(config, "_workstation_observation", None)
     if online or probe_source not in {"microsoft-connect-test", "all-connectivity-probes-failed", "workstation-access-failed"}:
         return online, probe_source, 1
+    if _bridge_link_down_fresh():
+        # 桥刚记录了 link-down，本身就是"断链"的第二份证据；不必再花十几秒做第二次探测。
+        if record:
+            event(
+                "monitor-confirmation-probe",
+                False,
+                "桥已报告链路断开，跳过第二次探测，直接进入恢复判定",
+                probe_attempts=2,
+                first_failure_source=probe_source,
+                second_probe_source="bridge-link-down",
+            )
+        return False, probe_source, 2
     second_online, second_source = _online_detail(config)
     second_observation = getattr(config, "_workstation_observation", None)
     if first_observation is not None and second_observation is not None:
@@ -1203,6 +1220,58 @@ def _link_down_signals(observation: Observation | None) -> tuple[bool, bool]:
         accelerate = 0.0 <= age <= LINK_DOWN_SIGNAL_MAX_RECORD_AGE
     defer = fields.get("ethernet_ready") is False
     return accelerate, defer
+
+
+def _bridge_link_down_marker() -> str:
+    """状态文件里"因链路断开而退出"的时间戳；没有则返回空串。
+
+    只读 JSON、不探测进程，5 秒一次的轮询成本可以忽略。1.6.1 的快速探测有一个盲区：
+    桥中断链的时刻可能正好落在两轮监测之间的 120 秒等待里，那一轮根本没机会看到记录。
+    """
+    try:
+        record = json.loads(KEEPALIVE_STATUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(record, dict):
+        return ""
+    if str(record.get("exit_reason") or "") != "link-down":
+        return ""
+    return str(record.get("exited_at") or record.get("updated_at") or "")
+
+
+def _bridge_link_down_fresh(max_age: float = LINK_DOWN_FRESH_SECONDS) -> bool:
+    """桥在最近几分钟内因 ``link-down`` 退出。"""
+    marker = _bridge_link_down_marker()
+    if not marker:
+        return False
+    try:
+        exited = datetime.fromisoformat(marker)
+    except ValueError:
+        return False
+    if exited.tzinfo is None:
+        return False
+    return 0 <= (datetime.now(exited.tzinfo) - exited).total_seconds() <= max_age
+
+
+def _wait_for_next_probe(seconds: float) -> None:
+    """与 ``wait_for_monitor_signal`` 相同，但会盯着桥的链路断开记录提前醒来。"""
+    marker = _bridge_link_down_marker()
+    remaining = max(0.0, float(seconds))
+    while remaining > 0:
+        step = min(remaining, LINK_DOWN_POLL_SECONDS)
+        if wait_for_monitor_signal(step):
+            return
+        current = _bridge_link_down_marker()
+        if current and current != marker:
+            event(
+                "monitor-probe-accelerated",
+                True,
+                "桥记录显示链路已断开，跳过剩余等待立即开始下一轮探测",
+                link_down_exited_at=current,
+                skipped_seconds=round(remaining, 1),
+            )
+            return
+        remaining -= step
 
 
 def _keepalive_watchdog_actionable(config: AppConfig, observation: Observation) -> bool:
@@ -2505,7 +2574,7 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
                         _maybe_restart_keepalive(config, observation, state)
                 if once:
                     return
-                wait_for_monitor_signal(sleep_seconds)
+                _wait_for_next_probe(sleep_seconds)
                 continue
         if online:
             if failures:
@@ -2784,7 +2853,7 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
                         )
         if once:
             return
-        wait_for_monitor_signal(sleep_seconds)
+        _wait_for_next_probe(sleep_seconds)
 
 
 def run_hibernate() -> bool:
