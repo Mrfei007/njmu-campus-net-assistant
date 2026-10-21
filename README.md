@@ -63,11 +63,20 @@ pwsh .\publish_release.ps1 -Draft       # 传成 draft，先人工看一眼
 脚本会先核对 zip 的 sha256 与 `releases\<version>.json` 是否一致，不一致直接拒绝发布。
 tag 名固定为 `v<version>`（与已有 `v1.5.9.2`…`v1.6.3` 一致）。
 
-首次使用需要两个前置条件（脚本会检查并给出命令）：
+凭据按以下顺序自动解析，任一可用即可（脚本会把实际用的来源打印出来）：
+
+1. `gh auth login`（交互登录，要求令牌带 `repo` + `read:org`）
+2. 环境变量 `GH_TOKEN` / `GITHUB_TOKEN`
+3. **git 凭据管理器里已存的本仓库推送令牌**（只需 `repo`，不需 `read:org`）——本机当前走的就是这条
+
+所以即使没做 `gh auth login` 也能发版：`gh` 只在登录校验时要求 `read:org`，
+用 `GH_TOKEN` 调 Release 接口不受此限（已验证能列出 v1.3.1 / v1.4.3）。
+
+前置条件（本机已完成）：远程 `origin` = `https://github.com/1204799421-bit/njmu-campus-net-assistant.git`，
+`gh` 2.102.1 已通过 `winget install --id GitHub.cli` 安装。
 
 ```powershell
-git remote add origin https://github.com/<owner>/<repo>.git
-winget install --id GitHub.cli
+# 需要交互式 gh（如 gh repo view / gh pr）时才做，需要带 read:org 的令牌
 gh auth login
 ```
 

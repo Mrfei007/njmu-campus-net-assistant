@@ -14,8 +14,13 @@
 #   pwsh .\publish_release.ps1 -Version 1.6.4   # explicit version instead of version.py
 #   pwsh .\publish_release.ps1 -Repo owner/name # override the detected GitHub repository
 #
-# Prerequisites: git remote 'origin' pointing at GitHub, and the GitHub CLI (gh) installed
-# and authenticated (`gh auth login`). The script checks both and explains what is missing.
+# Prerequisites: git remote 'origin' pointing at GitHub and the GitHub CLI (gh) installed.
+# Credentials resolve automatically, in this order: `gh auth login`, GH_TOKEN/GITHUB_TOKEN,
+# then the token in the git credential manager (the one already used to push).
+# The script checks each and explains what is missing.
+#
+# Note: `gh auth login` rejects classic tokens without the read:org scope, but the same token
+# still works for release calls through GH_TOKEN - so a push-only token is enough.
 
 param(
     [string]$Version = '',
@@ -155,12 +160,47 @@ if (-not $NotesFile) {
 
 # ---- 7. gh -------------------------------------------------------------------
 Step 'github cli'
+
+# Authentication can come from three places, checked in this order:
+#   1. gh auth login            (interactive; needs a token with repo + read:org)
+#   2. GH_TOKEN / GITHUB_TOKEN  (already exported in the environment)
+#   3. git credential manager   (the token this machine already uses to push; needs repo, not read:org)
+# gh only validates scopes on `gh auth login`; a plain token in GH_TOKEN works for API/release calls.
+function Get-TokenFromGitCredential {
+    $savedPrompt = $env:GIT_TERMINAL_PROMPT
+    $savedGcm = $env:GCM_INTERACTIVE
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE = 'never'
+    try {
+        $creds = ("protocol=https`nhost=github.com`n`n" | git credential fill 2>$null) -split "`n"
+        $t = ($creds | Where-Object { $_ -match '^password=' }) -replace '^password=', ''
+        if ($t) { return $t.Trim() }
+        return ''
+    } catch {
+        return ''
+    } finally {
+        $env:GIT_TERMINAL_PROMPT = $savedPrompt
+        $env:GCM_INTERACTIVE = $savedGcm
+    }
+}
+
 $gh = Get-Command gh -ErrorAction SilentlyContinue
-if (-not $gh) {
+$ghPath = ''
+if ($gh) { $ghPath = $gh.Source }
+else {
+    # winget installs to Program Files but an already-running shell keeps the old PATH
+    foreach ($candidate in @(
+        (Join-Path $env:ProgramFiles 'GitHub CLI\gh.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'GitHub CLI\gh.exe'),
+        (Join-Path $env:LOCALAPPDATA 'GitHub CLI\gh.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) { $ghPath = $candidate; break }
+    }
+}
+if (-not $ghPath) {
     Write-Host '[x] GitHub CLI (gh) is not installed.' -ForegroundColor Red
-    Write-Host '    Install it, then authenticate:'
+    Write-Host '    Install it:'
     Write-Host '      winget install --id GitHub.cli'
-    Write-Host '      gh auth login'
     Write-Host ''
     Write-Host '    Manual alternative (upload with browser):'
     Write-Host ('      https://github.com/' + $Repo + '/releases/new?tag=' + $tag)
@@ -168,16 +208,37 @@ if (-not $gh) {
     if (Test-Path -LiteralPath $shaPath) { Write-Host ('      asset 2: ' + $shaPath) }
     if ($NotesFile) { Write-Host ('      body   : ' + $NotesFile) }
     if (-not $DryRun) { Fail 'cannot upload without gh' }
-    Write-Host ''
-}$authOk = $false
-try { gh auth status 2>&1 | Out-Null; $authOk = ($LASTEXITCODE -eq 0) } catch { $authOk = $false }
-if (-not $authOk -and -not (Get-Command gh -ErrorAction SilentlyContinue)) { $authOk = $false }
-if (-not $authOk -and (Get-Command gh -ErrorAction SilentlyContinue)) {
-    if (-not $DryRun) { Fail 'gh is installed but not authenticated - run: gh auth login' }
-}
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-    if ($authOk) { Write-Host 'gh          : installed and authenticated' }
-    elseif ($DryRun) { Write-Host 'gh          : installed but not authenticated (DryRun continues)' -ForegroundColor Yellow }
+} else {
+    $authMode = ''
+    $savedEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $ghPath auth status *> $null
+    if ($LASTEXITCODE -eq 0) { $authMode = 'gh auth login' }
+    $ErrorActionPreference = $savedEap
+
+    if (-not $authMode) {
+        foreach ($v in @('GH_TOKEN', 'GITHUB_TOKEN')) {
+            $val = [Environment]::GetEnvironmentVariable($v)
+            if ($val) { $authMode = ('environment ' + $v) }
+        }
+    }
+    if (-not $authMode) {
+        $storedToken = Get-TokenFromGitCredential
+        if ($storedToken) {
+            $env:GH_TOKEN = $storedToken
+            Remove-Variable storedToken
+            $authMode = 'git credential manager'
+        }
+    }
+
+    if (-not $authMode) {
+        Write-Host 'gh          : installed but no credentials found' -ForegroundColor Red
+        Write-Host '              run `gh auth login` once (needs a token with scopes repo + read:org),'
+        Write-Host '              or export GH_TOKEN, or configure a git credential helper for github.com.'
+        if (-not $DryRun) { Fail 'cannot upload without credentials' }
+    } else {
+        Write-Host ('gh          : installed, auth = ' + $authMode)
+    }
 }
 
 # ---- 8. upload ---------------------------------------------------------------
@@ -207,7 +268,7 @@ if ($DryRun) {
     exit 0
 }
 
-& gh @ghArgs
+& $ghPath @ghArgs
 if ($LASTEXITCODE -ne 0) { Fail 'gh release create failed - see the message above' }
 
 Write-Host ''
