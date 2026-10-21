@@ -46,7 +46,27 @@ internal static class KeepaliveContract
     }
     public static int Main(string[] args)
     {
-        Bridge = Assembly.LoadFile(Path.GetFullPath(args[0])).GetType("RawetherBridge", true);
+        try { return Run(args); }
+        catch (Exception error)
+        {
+            // 只输出 ASCII 一行：控制台编码不可控时，异常原文可能连 ToString() 都失败
+            // （曾表现为 Python 侧只看到 UnicodeDecodeError，真实原因被完全吞掉）。
+            Console.WriteLine("contract check FAILED: " + error.GetType().FullName + ": " + Ascii(error.Message));
+            return 1;
+        }
+    }
+    private static string Ascii(string text)
+    {
+        if (text == null) return "";
+        var builder = new System.Text.StringBuilder();
+        foreach (char c in text) builder.Append(c < 128 ? c : '?');
+        return builder.ToString();
+    }
+    private static int Run(string[] args)
+    {
+        // 按字节加载：LoadFile 在"被 .NET 视为非本机位置"的卷/路径上会抛 NotSupportedException，
+        // 与程序集内容无关；这个测试只关心反射调用，不关心加载来源。
+        Bridge = Assembly.Load(File.ReadAllBytes(Path.GetFullPath(args[0]))).GetType("RawetherBridge", true);
         int sends; string records;
         Check(Retry(new uint[] {0}, false, false, out sends, out records) == 0 && sends == 1, "normal send");
         Check(Retry(new uint[] {31, 0}, false, false, out sends, out records) == 0 && sends == 2, "one retry");

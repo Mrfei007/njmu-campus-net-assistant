@@ -19,6 +19,14 @@ class CompiledKeepaliveTests(unittest.TestCase):
             result = subprocess.run([str(compiler), "/nologo", "/platform:x64", "/target:exe", *references,
                                      f"/out:{target}", str(source)], capture_output=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace"))
-        result = subprocess.run([str(harness), str(bridge)], capture_output=True, text=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # 子进程（.NET 控制台）按 UTF-8 输出；用系统 GBK 解码会在中文 stderr 上直接 UnicodeDecodeError，
+        # 把真正的失败原因（例如程序集加载异常）变成一句看不懂的解码错误。
+        result = subprocess.run([str(harness), str(bridge)], capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=20)
+        self.assertEqual(result.returncode, 0, (result.stdout or "") + (result.stderr or ""))
         self.assertIn("checks passed", result.stdout)
+        self.assertNotIn("FAILED", result.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -42,12 +42,25 @@
 `test_keepalive_contract` 的失败与 `startup_policy` 的 2 个错误在 1.5.9.2 基线上同样存在
 （本机 GBK 编码 / 配置迁移），与本次改动无关。
 
-产物：`NJMU校园网自动化连接程序-1.6-Windows-x64.zip`，53,956,039 字节，
-SHA-256 `3886142bf63df6e9bb05b3fea6d911d020938f8a34f377f4c1c266df5556615c`，
-build id `20261021-173032`。桥 `NpcapBridge.exe` SHA-256
-`94490f2a29207e2985df95f86c130ad5838f6c907eb5944c461008b7bbd889e2`（7,522,716 字节，
+产物：`NJMU校园网自动化连接程序-1.6-Windows-x64.zip`，53,955,927 字节，
+SHA-256 `a2abc9048daf7e38bf04a445fb9ecb3243780f54a3ad730fd950060bb3f68fda`，
+build id `20261021-181903`。桥 `NpcapBridge.exe` SHA-256
+`d5a55d3f76ab7f1bca746e343fad142bbf9e47b1d222742a776a5dadb7eedf84`（7,522,795 字节，
 由 `tools\build_npcap_bridge.py` 重编），`RawetherBridge.exe` SHA-256
 `f5d57437b231baf893079c0a61610076f0d927ce8b1ef79631e1a0b04849b6ea`。
+
+**同日补修（都发生在发布之前，已含在上面的产物里）**
+
+- 桥端 `self_sha256()` 曾在整理导入时漏掉模块级 `hashlib`，构造 `Telemetry` 会抛
+  `NameError`（构建期的 `selftest` 不覆盖遥测，所以没被拦住；由遥测单测捕获）。已补顶层
+  `import hashlib` 并重编桥。`tools/build_npcap_bridge.py` 现在只在"环境确实拦截
+  --onefile 自解包"时才跳过自检（旧桥同样失败，已实测对照），其它失败照旧阻断构建。
+- C# 契约测试恢复可运行：`Assembly.Load(File.ReadAllBytes(path))` 代替 `LoadFile`
+  （该机器把卷当作"非本机位置"，`LoadFile` 抛 `NotSupportedException`）；子进程输出按
+  UTF-8 解码（原先按 GBK，中文 stderr 直接 `UnicodeDecodeError`，真实原因被吞）。
+  现在 89 条检查全部通过，覆盖重试次数/间隔、非重试错误码、停止时机、回显序列推进。
+- 顺带在目标机上验证了混装路径：1.5.x 旧桥实跑时，1.6 读取端给出
+  `state=running / verdict_basis=legacy-v1`，看门狗不会动它。
 
 ## 1.5.9.2 — 2026-10-21
 
