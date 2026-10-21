@@ -27,6 +27,7 @@ from .edge import (
 )
 from .ethernet import EthernetInfo, get_ethernet, get_linked_physical_ethernet
 from .keepalive_status import read_health as read_keepalive_health
+from .keepalive_status import session_mutex_held
 from .workstation_monitor import Observation, observe as observe_workstation
 from .logging_redacted import append_connectivity_event, event, prune, save_morning_online_baseline
 from .monitor_state import arm as arm_monitor
@@ -81,6 +82,10 @@ KEEPALIVE_WATCHDOG_MAX_BACKOFF_SECONDS = 60 * 60
 KEEPALIVE_WATCHDOG_UNKNOWN_REASONS = {
     "no-valid-send-record", "no-send-record", "no-native-session",
 }
+# 1.6：只有连续多次观测到"确定没有会话"才允许重建，单次观测不动作。
+KEEPALIVE_ABSENT_OBSERVATIONS_REQUIRED = 2
+# "无法判定"只告警不重建，限频一条/小时。
+KEEPALIVE_UNKNOWN_WARN_SECONDS = 60 * 60
 MANUAL_LOGOUT_MONITOR_PAUSE_SECONDS = 5 * 60
 MORNING_RECOVERY_HANDOFF_WAIT_SECONDS = 330
 VALID_OPERATORS = {"电信", "移动", "联通", "校园网"}
@@ -1174,6 +1179,7 @@ def _keepalive_heartbeat_is_fresh(health: dict) -> bool:
 
 
 def _keepalive_watchdog_actionable(config: AppConfig, observation: Observation) -> bool:
+    """1.6：只有"确定没有会话"才允许重建；unknown/存疑一律不动作。"""
     if not getattr(config, "keepalive_watchdog_enabled", True):
         return False
     if not _native_verified(config):
@@ -1184,11 +1190,60 @@ def _keepalive_watchdog_actionable(config: AppConfig, observation: Observation) 
     health = fields.get("keepalive") or {}
     state = str(health.get("state") or "unknown")
     reason = str(health.get("reason") or "")
-    if state in {"exited", "stale", "inactive", "stopped"}:
-        # 状态判定可能与事实相反（历史版本曾把仍在发心跳的桥判成 exited），
-        # 因此记录仍新鲜且最近一次发送成功时不做重建，避免误杀健康会话。
-        return not _keepalive_heartbeat_is_fresh(health)
-    return state == "unknown" and reason in KEEPALIVE_WATCHDOG_UNKNOWN_REASONS
+    basis = str(health.get("verdict_basis") or "")
+    if _keepalive_heartbeat_is_fresh(health):
+        # 心跳新鲜说明会话活着，任何"已退出/已停止"的结论都不足采信。
+        return False
+    if state == "inactive":
+        return True
+    if state == "exited" and basis in {"absent", "legacy-v1", ""}:
+        # v2 的 absent：进程不在、互斥体无人持有、记录过期（唯一确定结论）；
+        # legacy-v1：旧桥记录，沿用 1.5.9.2 的行为，避免混装时无法自愈。
+        return True
+    if state == "unknown" and reason in KEEPALIVE_WATCHDOG_UNKNOWN_REASONS:
+        # 这三种原因表示"本安装目录压根没有会话记录"（首次启动/记录被清理/
+        # 认证失败未建立会话），确定没有活会话，可以重建。
+        return True
+    # image-mismatch / pid-mismatch / mutex-held-elsewhere / stale / send-failed 等
+    # 存疑结论不重建：宁可不动，也不误杀别人的会话。
+    return False
+
+
+def _warn_if_keepalive_unknown(health: dict, state: dict) -> None:
+    """unknown 只告警、绝不重建；同一会话限频一条/小时。"""
+    if str(health.get("state") or "") != "unknown":
+        return
+    now = time.time()
+    try:
+        last = float(state.get("keepalive_unknown_warned_at") or 0.0)
+    except (TypeError, ValueError):
+        last = 0.0
+    if now - last < KEEPALIVE_UNKNOWN_WARN_SECONDS:
+        return
+    state["keepalive_unknown_warned_at"] = now
+    save_monitor_state(state)
+    event(
+        "keepalive-watchdog-unknown",
+        None,
+        "后台保活状态无法判定，本次不做重建（请检查会话互斥体与状态文件）",
+        keepalive_reason=str(health.get("reason") or ""),
+        verdict_basis=str(health.get("verdict_basis") or ""),
+        bridge_schema=health.get("bridge_schema"),
+    )
+
+
+def _keepalive_absent_streak(config: AppConfig, observation: Observation, state: dict) -> int:
+    """连续"确定没有会话"的观测次数；出现任何非确定结论立即清零。"""
+    actionable = _keepalive_watchdog_actionable(config, observation)
+    try:
+        streak = max(0, int(state.get("keepalive_absent_streak") or 0))
+    except (TypeError, ValueError):
+        streak = 0
+    streak = streak + 1 if actionable else 0
+    if state.get("keepalive_absent_streak") != streak:
+        state["keepalive_absent_streak"] = streak
+        save_monitor_state(state)
+    return streak
 
 
 def _keepalive_watchdog_due(state: dict, now: float | None = None) -> bool:
@@ -1216,11 +1271,23 @@ def _maybe_restart_keepalive(config: AppConfig, observation: Observation, state:
     keepalive to the official client.
     """
     try:
-        if not _keepalive_watchdog_actionable(config, observation):
+        health = observation.fields.get("keepalive") or {}
+        _warn_if_keepalive_unknown(health, state)
+        if _keepalive_absent_streak(config, observation, state) < KEEPALIVE_ABSENT_OBSERVATIONS_REQUIRED:
             return False
         if config.auth_paused or _ruijie_submission_rate_limited(config):
             return False
         if not _keepalive_watchdog_due(state):
+            return False
+        # 重建前再确认一次：互斥体可获取才说明确实没有活会话，避免误杀。
+        if session_mutex_held() is not False:
+            event(
+                "keepalive-watchdog-skip",
+                False,
+                "仍有会话持有保活互斥体，本次不重建原生保活",
+                keepalive_state=str(health.get("state") or ""),
+                keepalive_reason=str(health.get("reason") or ""),
+            )
             return False
         health = observation.fields.get("keepalive") or {}
         previous_state = str(health.get("state") or "unknown")

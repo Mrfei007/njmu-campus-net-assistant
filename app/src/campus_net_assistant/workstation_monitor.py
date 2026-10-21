@@ -51,7 +51,16 @@ def _keepalive_suffix(config: AppConfig, health: dict[str, object]) -> str:
     """Explain the bridge's own state without conflating it with connectivity."""
     state = str(health.get("state") or "unknown")
     reason = str(health.get("reason") or "")
+    basis = str(health.get("verdict_basis") or "")
     backend = _backend_label(health)
+    # 版本衔接问题（桥/程序版本不一致、旧目录进程残留）优先给出可执行提示。
+    try:
+        from .component_compat import first_hint
+        hint = first_hint(dict(health))
+    except Exception:
+        hint = ""
+    if hint and state in {"unknown", "exited", "inactive", "stale", "stopped"}:
+        return hint
     if state == "running":
         return f"后台保活最近一次发送调用成功（{backend}）"
     if state == "send-failed":
@@ -62,6 +71,8 @@ def _keepalive_suffix(config: AppConfig, health: dict[str, object]) -> str:
         cause = _EXIT_REASON_MESSAGES.get(str(health.get("exit_reason") or ""))
         if cause:
             return f"后台保活进程已退出（{cause}，{backend}）"
+        if basis == "absent":
+            return f"后台保活会话已不存在（进程已退出且没有活动会话，{backend}）"
         try:
             sends = int(health.get("successful_sends") or 0)
         except (TypeError, ValueError):
@@ -99,6 +110,17 @@ def _keepalive_suffix(config: AppConfig, health: dict[str, object]) -> str:
         return "原生保活记录存在，但进程状态无法核验"
     if reason == "session-record-mismatch":
         return "保活记录与运行中的会话不一致"
+    ambiguous = {
+        "session-owner-missing": "桥接进程在运行但未持有保活会话（状态异常，暂不重建）",
+        "pid-mismatch": "状态记录与当前进程不一致（可能属于其它会话），暂不重建",
+        "mutex-held-elsewhere": "另一个保活会话正持有会话锁，本次不重建",
+        "unsupported-bridge-schema": "桥接状态记录版本不受支持（组件版本不匹配）",
+        "missing-created-at": "桥接状态记录不完整（缺少进程创建时间），组件版本可能不匹配",
+        "unexpected-image": "状态记录来自非本程序的进程，已忽略",
+        "invalid-clock": "系统时间异常，保活状态无法判定",
+    }
+    if reason in ambiguous:
+        return ambiguous[reason]
     return "后台保活状态未知"
 
 

@@ -186,6 +186,66 @@ kernel32.ReleaseMutex.restype = wintypes.BOOL
 EVENT_MODIFY_STATE = 0x0002
 WAIT_OBJECT_0 = 0x00000000
 ERROR_ALREADY_EXISTS = 183
+WAIT_ABANDONED = 0x00000080
+WAIT_TIMEOUT = 0x00000102
+
+# 状态文件契约：1.5.x 为 1，1.6 起为 2（新增真实创建时间、心跳序号、桥哈希）。
+BRIDGE_SCHEMA_VERSION = 2
+EXIT_SESSION_ALREADY_ACTIVE = 78
+EXIT_SESSION_MUTEX_UNAVAILABLE = 80
+
+kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE, *([ctypes.POINTER(wintypes.FILETIME)] * 4)]
+kernel32.GetProcessTimes.restype = wintypes.BOOL
+kernel32.QueryFullProcessImageNameW.argtypes = [
+    wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+
+
+def process_created_at() -> str:
+    """真实进程创建时间（UTC ISO）；空串表示查询失败。
+
+    与"开始保活"时刻不同：后者取在网卡打开完成之后，比真实创建时间晚 1~3 秒。
+    读取端用本字段做 PID 复用校验，两者混用会误判活进程为"已退出"。
+    """
+    try:
+        values = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel32.GetProcessTimes(kernel32.GetCurrentProcess(),
+                                       *(ctypes.byref(value) for value in values)):
+            return ""
+        ticks = (values[0].dwHighDateTime << 32) | values[0].dwLowDateTime
+        seconds = ticks / 10_000_000 - 11644473600
+        return datetime.fromtimestamp(seconds, timezone.utc).isoformat()
+    except (OSError, AttributeError, ValueError, OverflowError):
+        return ""
+
+
+def process_image_path() -> str:
+    """当前进程的可执行文件完整路径；空串表示查询失败。"""
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not kernel32.QueryFullProcessImageNameW(kernel32.GetCurrentProcess(), 0,
+                                                   buffer, ctypes.byref(size)):
+            return ""
+        return buffer.value
+    except (OSError, AttributeError):
+        return ""
+
+
+def self_sha256() -> str:
+    """桥自身文件哈希；用于远程确认"这台机器跑的是哪个桥"。"""
+    try:
+        path = process_image_path()
+        if not path or not os.path.isfile(path):
+            return ""
+        digest = hashlib.sha256()
+        with open(path, "rb") as stream:
+            for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except (OSError, ImportError):
+        return ""
 
 
 # ---------------------------------------------------------------- Npcap 绑定
@@ -439,6 +499,11 @@ class Telemetry:
         self.exited_at = ""
         self.pruned_day = ""
         self.started = datetime.now(timezone.utc).isoformat()
+        # 1.6：真实创建时间与桥自身哈希；查询失败时退回 started 并把状态标为不完整。
+        self.created_at = process_created_at() or self.started
+        self.image_path = process_image_path()
+        self.bridge_sha = self_sha256()
+        self.heartbeat_seq = 0
 
     def enable(self) -> None:
         self.active = True
@@ -506,10 +571,16 @@ class Telemetry:
 
     def _body(self) -> str:
         payload = {
-            "schema_version": 1,
+            "schema_version": BRIDGE_SCHEMA_VERSION,
             "session_id": self.session,
             "process_id": os.getpid(),
+            # v2：真实创建时间；process_started_at 保留为"开始保活"时刻以兼容旧读取端。
+            "process_created_at": self.created_at,
+            "keepalive_started_at": self.started,
             "process_started_at": self.started,
+            "heartbeat_seq": self.heartbeat_seq,
+            "bridge_sha256": self.bridge_sha,
+            "image_path": self.image_path,
             "adapter_description": self.adapter,
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "state": self.state,
@@ -533,6 +604,8 @@ class Telemetry:
 
     def _save_state(self) -> None:
         temporary = None
+        # 每次落盘心跳序号 +1：即使本机时钟乱跳，只要序号在涨就说明会话活着。
+        self.heartbeat_seq += 1
         try:
             TELEMETRY_DIR.mkdir(parents=True, exist_ok=True)
             temporary = str(STATE_PATH) + "." + self.session + ".tmp"
@@ -646,6 +719,7 @@ class Session:
         self.stop_event = None
         self.mutex = None
         self.mutex_owned = False
+        self.takeover_from = ""
         self.telemetry = None
         self.pcap = None
         self.source = b""
@@ -668,15 +742,40 @@ class Session:
         return True
 
     def acquire_session_mutex(self) -> bool:
-        handle = kernel32.CreateMutexW(None, False, SESSION_MUTEX_NAME)
+        """真正持有会话互斥体，并在对象已存在时区分两种情况。
+
+        1.5.x 用 bInitialOwner=False 创建却把 mutex_owned 置 True，等于"创建但不持有"：
+        读取端的"会话是否在跑"因此恒为假，误判无法降级为 unknown。1.6 起改为
+        CreateMutexW(..., True, ...) 请求所有权，并在已存在时：
+          * WaitForSingleObject(0) 超时 → 另一个会话正持有 → 本实例退出（78）；
+          * 立即获得（含 WAIT_ABANDONED）→ 前任已死，接管并记录 takeover_from。
+        """
+        handle = kernel32.CreateMutexW(None, True, SESSION_MUTEX_NAME)
         if not handle:
             return False
         if ctypes.get_last_error() == ERROR_ALREADY_EXISTS:
-            kernel32.CloseHandle(handle)
-            return False
+            status = kernel32.WaitForSingleObject(handle, 0)
+            if status == WAIT_TIMEOUT:
+                kernel32.CloseHandle(handle)
+                self.set_exit("session-already-active", EXIT_SESSION_ALREADY_ACTIVE)
+                return False
+            if status not in {WAIT_OBJECT_0, WAIT_ABANDONED}:
+                kernel32.CloseHandle(handle)
+                self.set_exit("session-mutex-unavailable", EXIT_SESSION_MUTEX_UNAVAILABLE)
+                return False
+            self.takeover_from = self._previous_session_pid()
         self.mutex = handle
         self.mutex_owned = True
         return True
+
+    @staticmethod
+    def _previous_session_pid() -> str:
+        """读取旧状态文件里的 pid，仅用于诊断"接管了谁"。"""
+        try:
+            raw = json.loads(STATE_PATH.read_text(encoding="utf-8-sig"))
+            return str(int(raw.get("process_id") or 0))
+        except (OSError, ValueError, TypeError):
+            return ""
 
     def stopped(self) -> bool:
         if not self.stop_event:
@@ -1072,8 +1171,14 @@ def main() -> int:
     session = Session(mode, timeout_ms, description)
     if session.persistent:
         if not session.acquire_session_mutex():
-            out("SESSION_ALREADY_RUNNING\t1")
-            return 78
+            if session.exit_reason == "session-already-active":
+                out("SESSION_ALREADY_RUNNING\t1")
+                return EXIT_SESSION_ALREADY_ACTIVE
+            out("SESSION_MUTEX_UNAVAILABLE\t1")
+            return EXIT_SESSION_MUTEX_UNAVAILABLE
+        if session.takeover_from:
+            # 前任桥异常退出但互斥体残留：本实例已接管，记录接管对象便于排查。
+            out("SESSION_TAKEOVER\t%s" % session.takeover_from)
     if not session.create_stop_event():
         return 79
     code = 70

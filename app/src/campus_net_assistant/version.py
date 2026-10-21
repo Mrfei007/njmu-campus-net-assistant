@@ -1,3 +1,3 @@
 """Single authoritative product version."""
 
-VERSION = "1.5.9.2"
+VERSION = "1.6"

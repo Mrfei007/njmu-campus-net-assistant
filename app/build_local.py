@@ -22,7 +22,8 @@ DEPENDENCY_VENDOR = Path(_VENDOR_OVERRIDE) if _VENDOR_OVERRIDE else ROOT.parent 
 PRODUCT_NAME = "NJMU校园网自动化连接程序"
 VERSION_SOURCE = ROOT / "src" / "campus_net_assistant" / "version.py"
 VERSION = str(runpy.run_path(str(VERSION_SOURCE))["VERSION"])
-if not re.fullmatch(r"\d+\.\d+(?:\.\d+){1,2}", VERSION):
+if not re.fullmatch(r"\d+\.\d+(?:\.\d+){0,2}", VERSION):
+    # 允许 a.b / a.b.c / a.b.c.d；Windows 版本资源由 render_version_info() 补齐到 4 段。
     raise SystemExit(f"无效的产品版本号：{VERSION!r}")
 BUILD_ID = datetime.now().strftime("%Y%m%d-%H%M%S")
 DIST_ROOT = ROOT / "dist-builds" / BUILD_ID

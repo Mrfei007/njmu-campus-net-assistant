@@ -290,7 +290,10 @@ class KeepaliveHealthTests(unittest.TestCase):
         result = self.read()
         self.assertEqual(result["state"], "running")
         self.assertEqual(result["successful_sends"], 3)
-        self.assertEqual(result["server_receipt"], "unverified")
+        # 方案 A：不再有"服务端回执"概念，只报心跳来源与最近成功时间。
+        self.assertNotIn("server_receipt", result)
+        self.assertEqual(result["verdict_basis"], "legacy-v1")
+        self.assertIn("last_success_age_seconds", result)
 
     def test_retry_health_and_persistent_failure_summary(self):
         self.record.update(state="retrying", last_send_status=31,
@@ -311,7 +314,12 @@ class KeepaliveHealthTests(unittest.TestCase):
                            updated_at=(self.now - timedelta(seconds=31)).isoformat())
         self.assertEqual(self.read()["state"], "stale")
 
-    def test_exited_or_reused_pid_is_not_reported_as_sending(self):
+    def test_fresh_heartbeat_beats_process_exit_but_stale_record_does_not(self):
+        # 1.5.9.2 起"心跳新鲜"优先：桥每 30 秒成功发送一次就是活着的证据，
+        # 进程句柄/创建时间等次要判据不得把健康会话判死（历史误杀故障）。
+        self.assertEqual(self.read("exited")["state"], "running")
+        self.record.update(updated_at=(self.now - timedelta(seconds=300)).isoformat(),
+                           last_success_at=(self.now - timedelta(seconds=300)).isoformat())
         self.assertEqual(self.read("exited")["state"], "exited")
         self.assertEqual(self.read("unknown")["state"], "unknown")
 
@@ -423,7 +431,7 @@ class KeepaliveWatchdogTests(unittest.TestCase):
         )
 
     def invoke(self, config, health, state=None, restart_result=None, lock=True,
-               route="ethernet-default", attempts=None, attempt_results=None):
+               route="ethernet-default", attempts=None, attempt_results=None, repeat=1):
         state = state if state is not None else {}
         result = restart_result or {"success": True, "session_started": True, "message": "ok"}
         link = Mock(description="Intel Ethernet", interface="Ethernet")
@@ -446,29 +454,62 @@ class KeepaliveWatchdogTests(unittest.TestCase):
             patch.object(controller, "save_monitor_state"),
             patch.object(controller, "event", side_effect=record_event),
             patch.object(controller, "write_status"),
+            # 1.6：重建前要求"互斥体可获取"，测试环境固定为无人持有。
+            patch.object(controller, "session_mutex_held", return_value=False),
         ):
-            ok = controller._maybe_restart_keepalive(
-                config, self.observation(health, route=route), state)
+            ok = False
+            for _ in range(repeat):
+                ok = controller._maybe_restart_keepalive(
+                    config, self.observation(health, route=route), state)
         self.events = events
         return ok, state, restart
 
+    # 1.6：连续 2 次"确定没有会话"才重建（monitor_interval 120s，约 4 分钟）。
+    STREAK = 2
+
     def test_restarts_when_online_but_bridge_exited(self):
-        ok, state, restart = self.invoke(self.config(), {"state": "exited", "reason": "bridge-exited"})
+        ok, state, restart = self.invoke(
+            self.config(), {"state": "exited", "reason": "bridge-gone", "verdict_basis": "absent"},
+            repeat=self.STREAK)
         self.assertTrue(ok)
         restart.assert_called_once()
         self.assertIn("keepalive_watchdog_last_attempt", state)
         self.assertEqual(state["keepalive_watchdog_consecutive_failures"], 0)
+        self.assertEqual(state["keepalive_absent_streak"], self.STREAK)
+
+    def test_does_not_restart_on_a_single_absent_observation(self):
+        ok, _, restart = self.invoke(
+            self.config(), {"state": "exited", "reason": "bridge-gone", "verdict_basis": "absent"})
+        self.assertFalse(ok)
+        restart.assert_not_called()
+
+    def test_does_not_restart_when_verdict_basis_is_ambiguous(self):
+        for basis in ("mutex-held-elsewhere", "pid-mismatch", "image-mismatch",
+                      "process-without-owner", "mutex-unverified"):
+            ok, _, restart = self.invoke(
+                self.config(),
+                {"state": "unknown", "reason": basis, "verdict_basis": basis},
+                repeat=self.STREAK)
+            self.assertFalse(ok, basis)
+            restart.assert_not_called()
 
     def test_restarts_for_missing_native_record(self):
-        ok, _, restart = self.invoke(self.config(), {"state": "unknown", "reason": "no-valid-send-record"})
+        ok, _, restart = self.invoke(
+            self.config(), {"state": "unknown", "reason": "no-valid-send-record",
+                            "verdict_basis": "no-record"},
+            repeat=self.STREAK)
         self.assertTrue(ok)
         restart.assert_called_once()
 
-    def test_restarts_after_a_bridge_was_stopped(self):
+    def test_does_not_restart_after_a_requested_stop(self):
+        # 1.6：stopped 只可能来自"按请求停止"，看门狗不再与之对抗；
+        # 真正需要恢复时由访问失败路径重新认证。
         ok, _, restart = self.invoke(
-            self.config(), {"state": "stopped", "reason": "session-stopped", "exit_reason": "stop-requested"})
-        self.assertTrue(ok)
-        restart.assert_called_once()
+            self.config(), {"state": "stopped", "reason": "session-stopped",
+                            "exit_reason": "stop-requested", "verdict_basis": "graceful-stop"},
+            repeat=self.STREAK)
+        self.assertFalse(ok)
+        restart.assert_not_called()
 
     def test_falls_back_to_rawether_after_npcap_failure(self):
         attempts = ["npcap", "rawether"]
@@ -477,8 +518,8 @@ class KeepaliveWatchdogTests(unittest.TestCase):
             {"success": True, "session_started": True, "message": "rawether ok"},
         ]
         ok, state, attempt = self.invoke(
-            self.config(), {"state": "exited", "reason": "bridge-exited"},
-            attempts=attempts, attempt_results=results)
+            self.config(), {"state": "exited", "reason": "bridge-gone", "verdict_basis": "absent"},
+            attempts=attempts, attempt_results=results, repeat=self.STREAK)
         self.assertTrue(ok)
         self.assertEqual(attempt.call_count, 2)
         self.assertEqual(attempt.call_args.args[-1], "rawether")
@@ -501,7 +542,7 @@ class KeepaliveWatchdogTests(unittest.TestCase):
         restart.assert_not_called()
 
     def test_does_not_restart_while_authentication_is_paused(self):
-        ok, _, restart = self.invoke(self.config(auth_paused=True), {"state": "exited", "reason": "bridge-exited"})
+        ok, _, restart = self.invoke(self.config(auth_paused=True), {"state": "exited", "reason": "bridge-exited"}, repeat=self.STREAK)
         self.assertFalse(ok)
         restart.assert_not_called()
 
@@ -513,21 +554,23 @@ class KeepaliveWatchdogTests(unittest.TestCase):
 
     def test_rate_limits_repeated_attempts(self):
         state = {"keepalive_watchdog_last_attempt": time.time() - 5}
-        ok, _, restart = self.invoke(self.config(), {"state": "exited", "reason": "bridge-exited"}, state=state)
+        ok, _, restart = self.invoke(self.config(), {"state": "exited", "reason": "bridge-exited"}, state=state, repeat=self.STREAK)
         self.assertFalse(ok)
         restart.assert_not_called()
 
     def test_failure_increments_backoff_counter(self):
         result = {"success": False, "session_started": False, "message": "auth failed"}
         ok, state, restart = self.invoke(
-            self.config(), {"state": "exited", "reason": "bridge-exited"}, restart_result=result)
+            self.config(), {"state": "exited", "reason": "bridge-exited"}, restart_result=result,
+            repeat=self.STREAK)
         self.assertFalse(ok)
         restart.assert_called_once()
         self.assertEqual(state["keepalive_watchdog_consecutive_failures"], 1)
 
     def test_skips_when_recovery_lock_is_busy(self):
         ok, _, restart = self.invoke(
-            self.config(), {"state": "exited", "reason": "bridge-exited"}, lock=False)
+            self.config(), {"state": "exited", "reason": "bridge-exited"}, lock=False,
+            repeat=self.STREAK)
         self.assertFalse(ok)
         restart.assert_not_called()
 

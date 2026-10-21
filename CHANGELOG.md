@@ -3,6 +3,52 @@
 本文件从 1.5.9.2 起维护。1.5.2–1.5.9.1 的条目依据发布包与 PYZ 模块差分回溯，
 标注了证据来源；更早版本（1.5、1.4.x）没有留存可核对的记录。
 
+## 1.6 — 2026-10-21
+
+**根治：保活进程身份与会话互斥（1.5.9.2 只是补丁）**
+
+1.5.9.2 用"心跳新鲜优先 + 300 秒容差"绕开了误判，但根因仍在：桥接写的
+`process_started_at` 不是进程创建时间；会话互斥体以 `bInitialOwner=False` 创建却被当成
+"已持有"，导致"进程可能还活着"的保护分支是死代码。1.6 把判定依据换成不可伪造的事实。
+
+改动（主程序与桥接同时升级，状态文件 schema 1 → 2）：
+
+- `npcap_bridge.py`：真实进程创建时间（`GetProcessTimes`）、`keepalive_started_at`、
+  单调 `heartbeat_seq`、桥自身 SHA-256 与映像路径写入状态文件；`CreateMutexW(..., True, ...)`
+  真正请求会话所有权，`ERROR_ALREADY_EXISTS` 时用 `WaitForSingleObject(0)` 区分
+  "另一个会话持有"（退出码 78，不写状态文件）与"前任已死"（接管并记录 `takeover_from`）。
+- `native/RawetherBridge.cs`：同一套 schema v2 字段（`BridgeSchemaVersion = 2`、
+  `process_created_at`、`keepalive_started_at`、`heartbeat_seq`），互斥体逻辑原本已正确，未改。
+- `keepalive_status.py`：三态模型（`running` / `exited` / `unknown`）+ `verdict_basis`
+  标明结论来源（`heartbeat`、`process-mutex`、`absent`、`pid-mismatch`、
+  `mutex-held-elsewhere`、`legacy-v1` 等）。`unknown` 永不升级为 `exited`；只有
+  "进程不在 + 互斥体可获取 + 记录过期" 才判 `absent`。schema v1 记录按 1.5.9.2 原样判定
+  （`verdict_basis="legacy-v1"`），未升级桥的机器行为不变。
+- `controller.py`：看门狗只在"确定没有会话"时动作，且要求连续 2 次观测（约 4 分钟）；
+  重建前再查一次互斥体，仍被持有则跳过；`unknown` 只限频告警（1 条/小时），不再杀进程重连。
+  "按请求停止"的会话不再被强行拉起。
+- `component_compat.py`（新增）：识别桥比程序旧、程序比桥旧、状态记录来自其它安装目录等
+  版本衔接问题，并在状态文案里给出可执行提示。
+- 移除 `server_receipt`（"服务端回执"概念没有任何消费方，改为报告最近一次发送时间与连续
+  成功次数）。
+- `version.py` → 1.6；`使用说明.txt` 说明三态、连续两次确认与"成对升级"。
+
+验证：判定矩阵 23/23（新 `tests/test_keepalive_v2_contract.py`）；跨进程互斥体协议 4/4
+（新 `tests/test_keepalive_mutex_ownership.py`：第三方持有→拒绝且不改状态文件、持有者被杀死→
+接管、空闲→直接获取、桥退出码 78）；遥测 7/7；`test_workstation_monitor` 56/56（原先 1 例
+因 1.5.9.2 语义变化而失效的用例已按新契约改写）；`native_wired` 24/24、
+`native_backend_service` 10/10、`ui_15` 11/11、`startup` 16/16；打包内置的
+`--gui-smoke-check` 与 Rawether 桥自检均通过；`RawetherBridge.cs` 单独 csc 编译 + 自检通过。
+`test_keepalive_contract` 的失败与 `startup_policy` 的 2 个错误在 1.5.9.2 基线上同样存在
+（本机 GBK 编码 / 配置迁移），与本次改动无关。
+
+产物：`NJMU校园网自动化连接程序-1.6-Windows-x64.zip`，53,956,039 字节，
+SHA-256 `3886142bf63df6e9bb05b3fea6d911d020938f8a34f377f4c1c266df5556615c`，
+build id `20261021-173032`。桥 `NpcapBridge.exe` SHA-256
+`94490f2a29207e2985df95f86c130ad5838f6c907eb5944c461008b7bbd889e2`（7,522,716 字节，
+由 `tools\build_npcap_bridge.py` 重编），`RawetherBridge.exe` SHA-256
+`f5d57437b231baf893079c0a61610076f0d927ce8b1ef79631e1a0b04849b6ea`。
+
 ## 1.5.9.2 — 2026-10-21
 
 **修复：工位有线"后台保活已退出"误报 + 每约 10 分钟断网重连**

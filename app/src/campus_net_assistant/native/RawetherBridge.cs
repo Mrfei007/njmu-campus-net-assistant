@@ -30,6 +30,10 @@ internal static class RawetherBridge
     private static string TelemetryExitReason = "";
     private static int TelemetryExitCode = -1;
     private static string TelemetryExitedAt = "";
+    private const int BridgeSchemaVersion = 2;
+    private static string TelemetryCreatedAt = "";
+    private static string TelemetryKeepaliveStartedAt = "";
+    private static int TelemetryHeartbeatSeq;
 
     private static string ReadServiceState(string name)
     {
@@ -228,9 +232,12 @@ internal static class RawetherBridge
             Directory.CreateDirectory(folder);
             string target = Path.Combine(folder, "native-keepalive-state.json");
             temporary = target + "." + TelemetrySession + ".tmp";
-            string body = "{\"schema_version\":1,\"session_id\":" + JsonText(TelemetrySession)
+            string body = "{\"schema_version\":" + BridgeSchemaVersion + ",\"session_id\":" + JsonText(TelemetrySession)
                 + ",\"process_id\":" + Process.GetCurrentProcess().Id
                 + ",\"process_started_at\":" + JsonText(Process.GetCurrentProcess().StartTime.ToUniversalTime().ToString("o"))
+                + ",\"process_created_at\":" + JsonText(TelemetryCreatedAt)
+                + ",\"keepalive_started_at\":" + JsonText(TelemetryKeepaliveStartedAt)
+                + ",\"heartbeat_seq\":" + (++TelemetryHeartbeatSeq)
                 + ",\"adapter_description\":" + JsonText(TelemetryAdapter)
                 + ",\"updated_at\":" + JsonText(DateTime.UtcNow.ToString("o"))
                 + ",\"state\":" + JsonText(TelemetryState)
@@ -1263,6 +1270,9 @@ internal static class RawetherBridge
         {
             TelemetryActive = true;
             TelemetryAdapter = wantedFriendly;
+            TelemetryCreatedAt = Process.GetCurrentProcess().StartTime.ToUniversalTime().ToString("o");
+            TelemetryKeepaliveStartedAt = DateTime.UtcNow.ToString("o");
+            TelemetryHeartbeatSeq = 0;
             RecordKeepalive("authenticating", 0, 0);
         }
         int receiveTimeout = receiveOne || sendStart || sendIdentity || sendMd5 || sendPrivateMd5 || runPrivateSession ? Int32.Parse(args[3]) : 0;

@@ -7,18 +7,21 @@
 #   pwsh .\build_release.ps1                  # build + copy zip/sha256 to the workspace root
 #   pwsh .\build_release.ps1 -NoCopy          # build only (trial build, does not touch releases)
 #   pwsh .\build_release.ps1 -Vendor 'D:\x\vendor'
+#   pwsh .\build_release.ps1 -RebuildBridge   # force rebuilding native\bin\NpcapBridge.exe
 #
 # What it does:
 #   1. read the version from app\src\campus_net_assistant\version.py
-#   2. run app\build_local.py (PyInstaller onedir + Rawether bridge + GUI smoke check + bridge selftest)
-#   3. verify the reported sha256 against the freshly computed hash
-#   4. copy the zip and its .sha256.txt to the output directory
-#   5. write release-records\<version>.json next to the output
+#   2. rebuild native\bin\NpcapBridge.exe when its source changed (or -RebuildBridge)
+#   3. run app\build_local.py (PyInstaller onedir + Rawether bridge + GUI smoke check + bridge selftest)
+#   4. verify the reported sha256 against the freshly computed hash
+#   5. copy the zip and its .sha256.txt to the output directory
+#   6. write release-records\<version>.json next to the output
 
 param(
     [string]$Vendor = '<workspace>\build_stage\work\campus-net-assistant\vendor',
     [string]$OutDir = $PSScriptRoot + '\..',
-    [switch]$NoCopy
+    [switch]$NoCopy,
+    [switch]$RebuildBridge
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,10 +47,28 @@ if (-not (Test-Path -LiteralPath (Join-Path $Vendor 'PyInstaller'))) { Fail "ven
 Write-Host "vendor          : $Vendor"
 Write-Host "app tree        : $App"
 
-# ---- 3. build ----------------------------------------------------------------
+# ---- 3. bridge ---------------------------------------------------------------
+# NpcapBridge.exe is a --onefile binary that build_local.py only copies. Rebuild it
+# when its source is newer (or when forced), otherwise a bridge change would silently
+# ship as an old binary (this is exactly how 1.5.8-1.5.9.2 kept the same bridge hash).
 $env:NJMU_DEPENDENCY_VENDOR = $Vendor
 $env:PYTHONSAFEPATH = '1'
 $env:PYTHONIOENCODING = 'utf-8'
+$bridgeExe = Join-Path $App 'src\campus_net_assistant\native\bin\NpcapBridge.exe'
+$bridgeArgs = @('-P', 'tools\build_npcap_bridge.py')
+if ($RebuildBridge) { $bridgeArgs += '--force' }
+Push-Location -LiteralPath $App
+try {
+    & python @bridgeArgs
+    if ($LASTEXITCODE -ne 0) { Fail "build_npcap_bridge.py failed with code $LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
+if (-not (Test-Path -LiteralPath $bridgeExe)) { Fail "bridge missing: $bridgeExe" }
+$bridgeSha = (Get-FileHash -LiteralPath $bridgeExe -Algorithm SHA256).Hash.ToLower()
+Write-Host "bridge sha256   : $bridgeSha"
+
+# ---- 4. build ----------------------------------------------------------------
 Push-Location -LiteralPath $App
 try {
     & python -P build_local.py
@@ -57,7 +78,7 @@ try {
     Remove-Item Env:\NJMU_DEPENDENCY_VENDOR -ErrorAction SilentlyContinue
 }
 
-# ---- 4. locate and verify the zip -------------------------------------------
+# ---- 5. locate and verify the zip -------------------------------------------
 $releaseRoot = Join-Path $App 'release'
 $zip = Get-ChildItem -LiteralPath $releaseRoot -Filter "*-$version-Windows-x64.zip" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -72,7 +93,7 @@ if ($reported -ne $computed) { Fail "sha256 mismatch: manifest=$reported compute
 $buildId = Get-ChildItem -LiteralPath (Join-Path $App 'dist-builds') -Directory -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty Name
 
-# ---- 5. publish --------------------------------------------------------------
+# ---- 6. publish --------------------------------------------------------------
 Write-Host ''
 Write-Host "zip     : $($zip.FullName)"
 Write-Host "size    : $([math]::Round($zip.Length / 1MB, 1)) MB"
@@ -95,6 +116,7 @@ if (-not $NoCopy) {
         sha256   = $computed
         recorded_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         source   = 'repo/app'
+        bridge_sha256 = $bridgeSha
     }
     ($record | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $recordsDir "$version.json") -Encoding utf8
     Write-Host "record  : $(Join-Path $recordsDir "$version.json")"
