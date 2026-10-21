@@ -138,7 +138,7 @@ class WakeLifecycleTests(unittest.TestCase):
             self.config, AppConfig(wake_enabled=False),
         ]
 
-        def probe(config):
+        def probe(config, **_kwargs):
             self.assertEqual(self.api.call_args.args[0],
                              0x80000001 if config.wake_enabled else 0x80000000)
             return True, "microsoft-connect-test", 1

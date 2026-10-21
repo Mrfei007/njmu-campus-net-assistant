@@ -1117,15 +1117,24 @@ def _should_recover(failure_source: str, failures: int) -> bool:
     return failures >= 2
 
 
-def _monitor_probe(config: AppConfig, *, record: bool = True) -> tuple[bool, str, int]:
+def _monitor_probe(config: AppConfig, *, record: bool = True,
+                   allow_link_down_shortcut: bool = False) -> tuple[bool, str, int]:
     if hasattr(config, "_workstation_observation"):
         del config._workstation_observation
     online, probe_source = _online_detail(config)
     first_observation = getattr(config, "_workstation_observation", None)
     if online or probe_source not in {"microsoft-connect-test", "all-connectivity-probes-failed", "workstation-access-failed"}:
         return online, probe_source, 1
-    if _bridge_link_down_fresh():
-        # 桥刚记录了 link-down，本身就是"断链"的第二份证据；不必再花十几秒做第二次探测。
+    if allow_link_down_shortcut and _bridge_link_down_fresh():
+        # 桥刚记录了 link-down：它本身就是"断链"的第二份证据，可以直接确认故障。
+        # 1.6.2 只跳过第二次探测、没有补上确认标记，结果被"原因待确认"分支挡住，
+        # 链路复通后白等近三分钟才恢复。
+        if first_observation is not None:
+            first_observation.fields["confirmed_failure"] = True
+            first_observation.recovery_allowed = True
+            first_observation.message = (
+                "工位有线已连接；链路恢复后联网探测仍失败，原生认证会话需要重建"
+            )
         if record:
             event(
                 "monitor-confirmation-probe",
@@ -2524,7 +2533,8 @@ def _monitor_locked(config: AppConfig, once: bool, awake: SystemAwakeLease) -> N
                 wait_for_monitor_signal(config.passive_probe_interval_seconds)
                 continue
         sleep_seconds = config.monitor_interval_seconds
-        online, probe_source, probe_attempts = _monitor_probe(config)
+        online, probe_source, probe_attempts = _monitor_probe(
+            config, allow_link_down_shortcut=link_down_episode)
         observation = getattr(config, "_workstation_observation", None) if config.connection_mode == CONNECTION_MODE_WORKSTATION_RUIJIE else None
         workstation_fields = observation.fields if observation is not None else {}
         # 1.6.1：桥报 link-down 或物理链路未就绪时，缩短本轮等待，尽快确认是否真断网；

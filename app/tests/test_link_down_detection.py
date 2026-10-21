@@ -256,12 +256,135 @@ class LinkDownPollingTests(unittest.TestCase):
             patch.object(controller, "event",
                          side_effect=lambda stage, ok, message="", **kw: events.append((stage, kw))),
         ):
-            online, source, attempts = controller._monitor_probe(config)
+            online, source, attempts = controller._monitor_probe(
+                config, allow_link_down_shortcut=True)
         self.assertFalse(online)
         self.assertEqual(source, "workstation-access-failed")
         self.assertEqual(attempts, 2)
         self.assertEqual(detail.call_count, 1)
         self.assertEqual(events[0][1]["second_probe_source"], "bridge-link-down")
+
+
+class _Stop(Exception):
+    """跳出监测循环。"""
+
+
+def _observation(ethernet_ready, source, message, **extra):
+    fields = {
+        "confirmed_failure": False,
+        "ethernet_ready": ethernet_ready,
+        "ethernet_interface": "Ethernet",
+        "route_mode": "ethernet-default",
+        "connectivity_scope": "effective-or-source-bound-access",
+        "keepalive": {"state": "exited", "exit_reason": "link-down", "record_age_seconds": 60},
+    }
+    fields.update(extra)
+    return workstation_monitor.Observation(
+        "access-failed" if source == "workstation-access-failed" else "network-unknown",
+        source, message, False, fields, recovery_allowed=False)
+
+
+class LinkRecoveryConfirmationTests(unittest.TestCase):
+    """1.6.3：断链复通后探测仍失败，必须在同一轮确认故障并恢复。"""
+
+    def test_shortcut_marks_the_failure_as_confirmed(self):
+        config = AppConfig(connection_mode="workstation_ruijie",
+                           ruijie_native_auto_enabled=True)
+        config.auto_connect_on_startup = True
+        obs = _observation(True, "workstation-access-failed", "两组联网探测失败，原因待确认")
+
+        def detail(target):
+            target._workstation_observation = obs
+            return False, "workstation-access-failed"
+
+        events = []
+        with (
+            patch.object(controller, "_online_detail", side_effect=detail),
+            patch.object(controller, "_bridge_link_down_fresh", return_value=True),
+            patch.object(controller, "event",
+                         side_effect=lambda stage, ok, message="", **kw: events.append((stage, kw))),
+        ):
+            online, source, attempts = controller._monitor_probe(
+                config, allow_link_down_shortcut=True)
+        self.assertFalse(online)
+        self.assertEqual(source, "workstation-access-failed")
+        self.assertEqual(attempts, 2)
+        self.assertIs(obs.fields["confirmed_failure"], True)
+        self.assertTrue(obs.recovery_allowed)
+        self.assertIn("原生认证会话需要重建", obs.message)
+        self.assertEqual(events[0][1]["second_probe_source"], "bridge-link-down")
+        self.assertTrue(controller._should_recover(source, attempts))
+
+    def test_without_the_episode_the_second_probe_still_runs(self):
+        config = AppConfig(connection_mode="workstation_ruijie",
+                           ruijie_native_auto_enabled=True)
+        calls = []
+
+        def detail(target):
+            calls.append(1)
+            target._workstation_observation = _observation(
+                True, "workstation-access-failed", "两组联网探测失败，原因待确认")
+            return False, "workstation-access-failed"
+
+        with (
+            patch.object(controller, "_online_detail", side_effect=detail),
+            patch.object(controller, "_bridge_link_down_fresh", return_value=True),
+            patch.object(controller, "event"),
+        ):
+            controller._monitor_probe(config)
+        self.assertEqual(len(calls), 2)
+
+    def test_monitor_recovers_on_the_first_cycle_after_the_link_returns(self):
+        from contextlib import ExitStack, nullcontext
+
+        config = AppConfig(connection_mode="workstation_ruijie",
+                           ruijie_native_auto_enabled=True)
+        config.wake_enabled = False
+        config.auto_connect_on_startup = True
+        pending = [
+            _observation(False, "workstation-network-unverified", "工位有线未连接，等待网线连接"),
+            _observation(True, "workstation-access-failed", "两组联网探测失败，原因待确认"),
+        ]
+
+        def detail(target):
+            target._workstation_observation = pending[0] if len(pending) == 1 else pending.pop(0)
+            return False, target._workstation_observation.source
+
+        statuses = []
+        recovered = []
+
+        def wait(seconds):
+            if recovered:
+                raise _Stop()
+            return False
+
+        with ExitStack() as stack:
+            for name, value in {
+                "acquire_monitor_lock": nullcontext(True),
+                "load_config": config,
+                "load_monitor_state": {"armed": True},
+                "_in_monitor_window": True,
+                "read_status": {},
+                "suppression_remaining_seconds": 0,
+            }.items():
+                stack.enter_context(patch.object(controller, name, return_value=value))
+            stack.enter_context(patch.object(controller, "_online_detail", side_effect=detail))
+            stack.enter_context(patch.object(controller, "_bridge_link_down_fresh", return_value=True))
+            stack.enter_context(patch.object(
+                controller, "wait_for_monitor_signal", side_effect=wait))
+            stack.enter_context(patch.object(
+                controller, "write_status",
+                side_effect=lambda stage, ok, message="", **kw: statuses.append(stage)))
+            for name in ("event", "append_connectivity_event", "prune", "_ensure_uu"):
+                stack.enter_context(patch.object(controller, name))
+            recover = stack.enter_context(patch.object(
+                controller, "_recover",
+                side_effect=lambda *a, **k: recovered.append(1) or True))
+            with self.assertRaises(_Stop):
+                controller.monitor(config)
+        recover.assert_called_once()
+        self.assertIn("workstation-network-unverified", statuses)
+        self.assertIn("recovered", statuses)
 
 
 if __name__ == "__main__":
