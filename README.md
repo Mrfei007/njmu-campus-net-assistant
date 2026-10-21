@@ -1,53 +1,56 @@
-# NJMU 校园网自动化连接程序
+# NJMU 校园网自动化连接程序 · 单源仓库
 
-面向南京医科大学 Windows 用户的校园网辅助工具，支持无线、宿舍有线和工位有线认证，以及后台监测、断网恢复和定时任务。已上传的可运行版本为 **1.4.3**。
+本仓库自 **1.5.9.2** 起是产品源码的**唯一真源（single source of truth）**。
+之前 1.5.2–1.5.9.1 的代码只存在于 `build_stage\work`（构建暂存目录）与各发布 zip 中，
+历史代码没有版本管理；从本提交开始纳入 git，之后任何改动先提交再发版。
 
-## 下载
+## 目录结构
 
-从 [1.4.3 发布页面](https://github.com/1204799421-bit/njmu-campus-net-assistant/releases/tag/v1.4.3) 的 Assets 下载 `NJMU-Campus-Net-Assistant-1.4.3-Windows-x64.zip`，完整解压后即可运行。
-
-同名 `.sha256.txt` 文件仅用于可选的下载完整性校验，不是运行软件所需的文件，可以不下载。请使用 Assets 中的完整安装包，自动生成的 Source code 压缩包不是可运行程序。
-
-1.4.3 发布包 SHA-256：
-
-```text
-a41d97c429d7f53d83f78c73f1bd69f617c1c54174eaecb62f47839c358ed7eb
+```
+repo\
+  app\                    产品源码树（构建的根目录）
+    src\campus_net_assistant\   Python 包（含 native\bin\NpcapBridge.exe）
+    tests\                      隔离回归测试
+    tools\                      辅助脚本
+    build_local.py              PyInstaller onedir 打包 + 校验 + 出 zip
+    version_info.txt            exe 版本资源模板
+    使用说明.txt                随包说明（构建时替换 {{VERSION}}）
+    version.py                  版本号唯一来源
+  build_release.ps1       从本仓库出发布包
+  CHANGELOG.md            版本变更记录
+  README.md               本文件
 ```
 
-本次提供 1.4.3 完整发布包。
+依赖（PySide6 / shiboken6 / PyInstaller）体积约 650 MB，**不进版本库**，放在仓库外：
 
-## 1.4.3 的主要更新
+```
+<工作区>\build_stage\work\campus-net-assistant\vendor
+```
 
-相对仓库此前的 1.3.1 发布，主要包括：
+## 出包
 
-- 浏览器认证优先使用 Google Chrome，未安装时使用 Microsoft Edge。
-- 无线模式增加可选的“实验：优先尝试无浏览器登录”，**默认关闭**。预检不兼容时回退浏览器；已经提交但结果不明时，不再通过浏览器重复提交。
-- 统一程序版本信息及配套使用说明，明确各连接模式、自动化开关和恢复策略。
+```powershell
+pwsh .\build_release.ps1                 # 构建并把 zip + sha256 复制到工作区根目录
+pwsh .\build_release.ps1 -NoCopy         # 只构建，不复制（试构建用）
+pwsh .\build_release.ps1 -Vendor 'D:\other\vendor'
+```
 
-1.4.3 **没有宿舍无浏览器登录调查入口和对应调查模块**。宿舍有线仍使用网页认证；无线的实验性无浏览器登录与宿舍调查是不同功能。
+脚本会：读 `app\src\campus_net_assistant\version.py` 的版本号 → 调 `build_local.py`
+（PyInstaller onedir + Rawether 桥编译 + GUI 冒烟检查 + 桥自检）→ 校验 sha256 →
+复制到工作区根目录 → 在 `release-records\<version>.json` 留一条构建记录。
 
-## 连接与自动化
+`build_stage\build_all.ps1` 与 `product\` 下的同名脚本是旧的"基线 + 补丁脚本"流水线，
+**已废弃**：它们会从 `旧工作区` 的 1.5 基线重新复制源码并覆盖，等于回退代码。
 
-| 功能 | 行为 |
-| --- | --- |
-| 全校无线 | 使用 Windows 保存的 NJMU_WLAN 配置，按所选认证策略登录并检查真实联网 |
-| 宿舍有线 | 网口就绪后执行网页认证，提交账号密码并选择运营商 |
-| 工位有线 | 使用已验证版本的锐捷客户端组件；原生认证需要先通过环境检查和现场验证 |
-| 开机后自动联网 | 登录 Windows 后按保存的连接模式自动联网；不会自行唤醒电脑 |
-| 每天定时唤醒 | 到点唤醒并检查联网；已在线不重复认证，离线时尝试恢复 |
-| 每天定时休眠 | 按独立设置的时间休眠 |
-| 联网后启动 UU | 联网成功后启动用户选择的本机 UU 程序 |
+## 版本规则
 
-开机联网与每日唤醒是两个独立开关，可按需要分别设置。
+- `version.py` 是唯一来源，`build_local.py` 会校验格式并写进 exe 资源。
+- 1.5.x：补丁号递增（1.5.9.1、1.5.9.2…），只做点修。
+- **1.6**：保活会话身份与互斥体的根治版本（见 `analysis\1.6-根治方案-保活进程身份与会话互斥.md`）。
+  该版本会重编 `NpcapBridge.exe`，桥哈希变化会导致每台机器需重新做一次原生认证验证。
 
-手动断开认证成功后，程序暂停自动恢复 5 分钟，避免立即重新联网。
+## 注意
 
-## 使用方法
-
-运行环境为 Windows 10/11 x64，网页认证需要 Chrome 或 Edge；工位模式还需安装学校提供的锐捷 V4.99 客户端。
-
-1. 下载完整 ZIP，全部解压后运行其中的 EXE。
-2. 输入账号密码，选择连接方式及运营商；工位模式先选择锐捷客户端，再按提示检查与验证。
-3. 按需设置自动化，点击“保存设置并更新自动化”，完成管理员授权。
-
-退出界面后自动化可继续运行；停用或卸载前，请先停止自动化。具体操作见 [使用说明](releases/1.4.3/使用说明.txt)。
+- 不要在 `build_stage\` 或 `product\` 里构建：这些目录对受限进程不可写，且其源码树已过时。
+- `NpcapBridge.exe` 自 1.5.8 起字节不变；若重编它，必须同步更新原生验证的版本/哈希判定。
+- 构建机需要：Python 3.12、.NET Framework 4.x 的 `csc.exe`（编译 Rawether 桥）、Npcap 驱动（运行期）。
