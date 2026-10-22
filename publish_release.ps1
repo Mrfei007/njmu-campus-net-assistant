@@ -243,8 +243,20 @@ if (-not $ghPath) {
 
 # ---- 8. upload ---------------------------------------------------------------
 Step 'upload'
-$assets = @($zipPath)
-if (Test-Path -LiteralPath $shaPath) { $assets += $shaPath }
+# GitHub stores asset names ASCII-only: non-ASCII characters collapse to dots.
+# So upload staged copies under ASCII names, and make the sidecar reference that name too.
+#   NJMU-CampusNet-Assistant-<version>-Windows-x64.zip (+ .sha256.txt)
+$assetZip = 'NJMU-CampusNet-Assistant-' + $Version + '-Windows-x64.zip'
+$assetSha = $assetZip + '.sha256.txt'
+$stage = Join-Path $env:TEMP ('njmu-release-assets-' + $Version)
+if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+New-Item -ItemType Directory -Path $stage | Out-Null
+$zipStage = Join-Path $stage $assetZip
+Copy-Item -LiteralPath $zipPath -Destination $zipStage
+$shaStage = Join-Path $stage $assetSha
+Set-Content -LiteralPath $shaStage -Value ($actual + '  ' + $assetZip) -Encoding ascii
+$assets = @($zipStage, $shaStage)
+Write-Host ('assets      : ' + $assetZip + '  (+ .sha256.txt)')
 
 $ghArgs = @('release', 'create', $tag) + $assets + @('--repo', $Repo, '--title', $tag)
 if ($NotesFile) { $ghArgs += @('--notes-file', $NotesFile) } else { $ghArgs += @('--generate-notes') }
@@ -271,6 +283,7 @@ if ($DryRun) {
 & $ghPath @ghArgs
 if ($LASTEXITCODE -ne 0) { Fail 'gh release create failed - see the message above' }
 
+Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host ('published   : https://github.com/' + $Repo + '/releases/tag/' + $tag) -ForegroundColor Green
 if (-not $Draft) {

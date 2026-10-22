@@ -63,6 +63,10 @@ pwsh .\publish_release.ps1 -Draft       # 传成 draft，先人工看一眼
 脚本会先核对 zip 的 sha256 与 `releases\<version>.json` 是否一致，不一致直接拒绝发布。
 tag 名固定为 `v<version>`（与已有 `v1.5.9.2`…`v1.6.3` 一致）。
 
+资产名用 ASCII：GitHub 会把资产名里的非 ASCII 字符压成点（中文文件名会变成 `NJMU.-…`），
+因此脚本把 zip 复制成 `NJMU-CampusNet-Assistant-<version>-Windows-x64.zip` 再上传，
+sidecar 内容也按该名生成，下载后可直接 `sha256sum -c`。本地 `releases\` 仍保留中文文件名。
+
 凭据按以下顺序自动解析，任一可用即可（脚本会把实际用的来源打印出来）：
 
 1. `gh auth login`（交互登录，要求令牌带 `repo` + `read:org`）
