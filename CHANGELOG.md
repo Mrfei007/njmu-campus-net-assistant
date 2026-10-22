@@ -168,7 +168,9 @@ build id `20261021-181903`。桥 `NpcapBridge.exe` SHA-256
 
 验证：判定自测 8/8；包内 240 个模块与 1.5.9.1 差分仅 4 个变化；`NpcapBridge.exe`
 SHA-256 仍为 `704b9dc0…`（未重编）；GUI 冒烟检查通过。
-产物 SHA-256 `8fa68f939c65b436dbcc8d923b340bb9aa40f60d3e15016646ca7f705f265f15`。
+产物 SHA-256 `cd61ace6a90a696b0fab85b06359d727d86bda6c5c66c61278180e50198b7ea5`。
+2026-10-22 重新打包：包内新增 `tools\npcap-1.89.exe`（Nmap Software LLC 官方签名版 Npcap 1.89），
+并同步更新使用说明与版本信息；程序文件本身未改动（原包 SHA-256 `8fa68f93…`）。
 
 ## 1.5.9.1 — 2026-10-20
 

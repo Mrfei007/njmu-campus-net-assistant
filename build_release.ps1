@@ -18,7 +18,7 @@
 #   6. write releases\<version>.json into THIS repository (tracked: the version index)
 
 param(
-    [string]$Vendor = '<workspace>\archive\build_stage\work\campus-net-assistant\vendor',
+    [string]$Vendor = '',
     [string]$OutDir = $PSScriptRoot + '\..\releases',
     [switch]$NoCopy,
     [switch]$RebuildBridge
@@ -27,6 +27,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
 $App = Join-Path $Here 'app'
+
+# Default vendor (PyInstaller + deps) lives beside the repository, not inside it.
+if (-not $Vendor) { $Vendor = Join-Path $Here '..\archive\build_stage\work\campus-net-assistant\vendor' }
 
 function Fail([string]$message) {
     Write-Host ''
