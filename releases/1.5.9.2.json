@@ -2,10 +2,10 @@
     "version":  "1.5.9.2",
     "build_id":  "20261021-115824",
     "zip":  "NJMU校园网自动化连接程序-1.5.9.2-Windows-x64.zip",
-    "size_bytes":  55245310,
-    "sha256":  "cd61ace6a90a696b0fab85b06359d727d86bda6c5c66c61278180e50198b7ea5",
+    "size_bytes":  55244335,
+    "sha256":  "2fbfbbfc0575e9a9f5933116d98f02d334ea94880f7ffd80297653417baa006b",
     "recorded_at":  "2026-10-21T12:00:00+08:00",
-    "repacked_at":  "2026-10-22T14:30:00+08:00",
+    "repacked_at":  "2026-10-22T15:55:00+08:00",
     "bundled_npcap":  {
                            "file":  "tools/npcap-1.89.exe",
                            "version":  "1.89",
@@ -16,6 +16,6 @@
                    "该包在建立单源仓库之前构建，构建目录为 build1592\\njmu-campus-net-assistant-1.5",
                    "仓库建立后从 repo/app 重新构建验证：PYZ-00.pyz 与本源包字节一致（MD5 8BAE24097593AE4581FCAD9387D6D2DC），exe 版本资源 1.5.9.2",
                    "zip 的 sha256 因压缩时间戳与 PyInstaller 非确定性而不同，属正常；模块内容一致",
-                   "2026-10-22 重新打包：新增 tools/npcap-1.89.exe，更新 使用说明.txt 与 版本信息.json；其余 168 个条目 CRC 未变；原包 sha256 8fa68f939c65b436dbcc8d923b340bb9aa40f60d3e15016646ca7f705f265f15 备份于 archive\\release-backup"
+                   "2026-10-22 重新打包：新增 tools/npcap-1.89.exe，更新 使用说明.txt 与 版本信息.json；其余 168 个条目 CRC 未变；初版 sha256 8fa68f939c65b436dbcc8d923b340bb9aa40f60d3e15016646ca7f705f265f15、含 Npcap 版 sha256 cd61ace6a90a696b0fab85b06359d727d86bda6c5c66c61278180e50198b7ea5 均备份于 archive\\release-backup"
                ]
 }
