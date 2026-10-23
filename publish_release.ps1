@@ -293,7 +293,8 @@ Step 'upload'
 # GitHub stores asset names ASCII-only: non-ASCII characters collapse to dots.
 # So upload staged copies under ASCII names, and make the sidecar reference that name too.
 #   NJMU-CampusNet-Assistant-<version>-Windows-x64.zip (+ .sha256.txt)
-$assetZip = 'NJMU-CampusNet-Assistant-' + $Version + '-Windows-x64.zip'
+$assetZip = [string]$record.github_asset_name
+if (-not $assetZip) { $assetZip = 'NJMU-CampusNet-Assistant-' + $Version + '-Windows-x64.zip' }
 $assetSha = $assetZip + '.sha256.txt'
 $stage = Join-Path $env:TEMP ('njmu-release-assets-' + $Version)
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }

@@ -134,6 +134,7 @@ if (-not $NoCopy) {
         version  = $version
         build_id = $buildId
         zip      = $zip.Name
+        github_asset_name = 'NJMU-CampusNet-Assistant-' + $version + '-Windows-x64.zip'
         size_bytes = $zip.Length
         sha256   = $computed
         recorded_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
