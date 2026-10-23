@@ -96,6 +96,19 @@ if ($reported -ne $computed) { Fail "sha256 mismatch: manifest=$reported compute
 $buildId = Get-ChildItem -LiteralPath (Join-Path $App 'dist-builds') -Directory -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty Name
 
+# The package manifest must prove the signed Npcap installer was staged.  Do not
+# publish a zip that silently omits <program>\tools\npcap-*.exe.
+$manifestPath = Get-ChildItem -LiteralPath (Join-Path $App ('dist-builds\' + $buildId)) -Filter '版本信息.json' -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+if (-not $manifestPath) { Fail "package manifest missing under dist-builds\$buildId" }
+$packageManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$npcapName = [string]$packageManifest.npcap_installer.name
+$npcapSha = [string]$packageManifest.npcap_installer.sha256
+$npcapSize = [int64]$packageManifest.npcap_installer.size_bytes
+if (-not $npcapName -or -not $npcapSha -or $npcapSize -le 0) {
+    Fail 'package manifest does not contain npcap_installer metadata'
+}
+
 # ---- 6. publish --------------------------------------------------------------
 Write-Host ''
 Write-Host "zip     : $($zip.FullName)"
@@ -126,6 +139,9 @@ if (-not $NoCopy) {
         recorded_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         source   = 'repo/app'
         bridge_sha256 = $bridgeSha
+        npcap_installer = $npcapName
+        npcap_installer_size = $npcapSize
+        npcap_installer_sha256 = $npcapSha
         release_dir = $family
     }
     ($record | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $recordsDir "$version.json") -Encoding utf8

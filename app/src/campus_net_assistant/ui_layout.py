@@ -234,7 +234,7 @@ def rebuild(window):
     w.status_label.setParent(root)
     w.status_label.hide()
     actions.addWidget(row(w.native_verify_button, w.login_validate_button,
-                          w.reauthenticate_button, w.network_details_button, stretch=True))
+                          w.reauthenticate_button, stretch=True))
     actions.addWidget(w.native_verify_hint)
     connection.addWidget(w.manual_card)
     w.account_card, details = section("连接配置")

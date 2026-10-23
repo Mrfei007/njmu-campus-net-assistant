@@ -6,9 +6,9 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import (QPointF, QSize, Qt, QThread, QTime, QTimer, QObject, QUrl,
+from PySide6.QtCore import (QPointF, QSize, Qt, QThread, QTime, QTimer, QObject,
                             Signal, Slot)
-from PySide6.QtGui import (QAction, QColor, QCloseEvent, QDesktopServices, QIcon, QPainter,
+from PySide6.QtGui import (QAction, QColor, QCloseEvent, QIcon, QPainter,
                            QPainterPath, QPen, QPixmap)
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
@@ -306,20 +306,16 @@ class MainWindow(QMainWindow):
         self.reauthenticate_button.setObjectName("warningButton")
         self.login_validate_button = QPushButton("立即认证并检查联网")
         self.login_validate_button.setObjectName("primaryButton")
-        self.network_details_button = QPushButton("查看联网详情")
-        self.network_details_button.setObjectName("compactButton")
         for button in (
             self.native_verify_button,
             self.reauthenticate_button,
             self.login_validate_button,
-            self.network_details_button,
         ):
             button.setMinimumHeight(38)
         self.login_button = self.reauthenticate_button
         manual_row.addWidget(self.native_verify_button, 1)
         manual_row.addWidget(self.reauthenticate_button, 1)
         manual_row.addWidget(self.login_validate_button, 1)
-        manual_row.addWidget(self.network_details_button, 1)
         manual_layout.addLayout(manual_row)
         self.native_verify_hint = QLabel()
         self.native_verify_hint.setObjectName("modeHint")
@@ -568,7 +564,6 @@ class MainWindow(QMainWindow):
         self.reauthenticate_button.clicked.connect(self.run_network_logout)
         self.login_validate_button.clicked.connect(self.run_login_validation)
         self.dorm_script_survey_button.clicked.connect(self.run_dorm_script_survey)
-        self.network_details_button.clicked.connect(self.show_network_details)
         self.log_button.clicked.connect(self.open_logs)
         for signal in (
             self.auto_connect_on_startup.toggled,
@@ -1785,21 +1780,6 @@ class MainWindow(QMainWindow):
             os.startfile(str(APP_DIR / "logs"))
         except OSError:
             QMessageBox.information(self, "日志目录", str(APP_DIR / "logs"))
-
-    @Slot()
-    def show_network_details(self) -> None:
-        status = read_status()
-        message = str(status.get("message") or self.status_label.text() or "尚未运行")
-        QMessageBox.information(
-            self,
-            "联网详情",
-            f"连接方式：{self.status_title.text()}\n"
-            f"当前状态：{self.status_badge.text()}\n"
-            f"状态说明：{message}\n"
-            f"{self.monitor_label.text()}\n"
-            f"{self.task_label.text()}\n"
-            f"{self.next_action_label.text()}",
-        )
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._allow_close:

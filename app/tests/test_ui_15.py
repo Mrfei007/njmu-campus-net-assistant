@@ -63,6 +63,10 @@ class TabMigrationTests(TestCase):
         self.assertIn("·", self.w.tabs.tabText(0))
         self.assertIn("·", self.w.tabs.tabText(1))
 
+    def test_network_details_entry_point_is_removed(self):
+        self.assertFalse(hasattr(self.w, "network_details_button"))
+        self.assertFalse(hasattr(self.w, "show_network_details"))
+
     def test_save_applies_all_tabs_without_rewriting_existing_credentials(self):
         self.w.connection_mode.setCurrentIndex(self.w.connection_mode.findData("dorm_ethernet"))
         self.w.operator.setCurrentText("移动")

@@ -1,0 +1,14 @@
+{
+  "version": "1.6.4",
+  "build_id": "20261023-185113",
+  "zip": "NJMU校园网自动化连接程序-1.6.4-Windows-x64.zip",
+  "size_bytes": 55258839,
+  "sha256": "016bd5a63073e37155b5167c049aca06a57df5b8abd820e65b9e5be36de38acf",
+  "recorded_at": "2026-10-23T18:51:55+08:00",
+  "source": "repo/app",
+  "bridge_sha256": "d5a55d3f76ab7f1bca746e343fad142bbf9e47b1d222742a776a5dadb7eedf84",
+  "npcap_installer": "npcap-1.89.exe",
+  "npcap_installer_size": 1325224,
+  "npcap_installer_sha256": "8aed85e900d783d1308506e919587d3e540451947af8a82f2d04f819e44305cc",
+  "release_dir": "1.6.x"
+}

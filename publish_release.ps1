@@ -29,7 +29,9 @@ param(
     [string]$NotesFile = '',
     [switch]$Draft,
     [switch]$Prerelease,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$AllowDirty,
+    [switch]$SkipTagPush
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,18 +90,56 @@ if ($record.PSObject.Properties.Name -contains 'size_bytes' -and $size -ne [int6
 }
 Write-Host ("OK          : sha256 and size match the version index (" + [math]::Round($size / 1MB, 1) + " MB)")
 
+# GitHub releases are downloaded by end users; a package without the signed
+# Npcap installer still "works" until the first workstation setup, then fails.
+# Refuse to publish unless exactly one tools/npcap-*.exe is present and matches
+# the version index when that index records its hash.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+    $npcapEntries = @($archive.Entries | Where-Object { $_.FullName -match '/tools/npcap-[^/]+\.exe$' })
+    if ($npcapEntries.Count -ne 1) {
+        Fail ("release zip must contain exactly one tools/npcap-*.exe, found " + $npcapEntries.Count)
+    }
+    $npcapEntry = $npcapEntries[0]
+    if ($npcapEntry.Length -le 0) { Fail "release zip contains an empty Npcap installer" }
+    $stream = $npcapEntry.Open()
+    try {
+        $hasher = [System.Security.Cryptography.SHA256]::Create()
+        try { $npcapActual = ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLower() }
+        finally { $hasher.Dispose() }
+    } finally { $stream.Dispose() }
+    if ($record.PSObject.Properties.Name -contains 'npcap_installer_sha256') {
+        if ($npcapActual -ne ([string]$record.npcap_installer_sha256).ToLower()) {
+            Fail ("Npcap installer hash mismatch`n    record: " + $record.npcap_installer_sha256 + "`n    actual: " + $npcapActual)
+        }
+    }
+    Write-Host ("Npcap      : " + $npcapEntry.FullName + " (" + [math]::Round($npcapEntry.Length / 1MB, 2) + " MB, sha256 ok)")
+} finally {
+    $archive.Dispose()
+}
+
 # ---- 4. git state ------------------------------------------------------------
 Step 'git'
 $tag = 'v' + $Version
 $head = (git -C $Here rev-parse --short HEAD).Trim()
+$headFull = (git -C $Here rev-parse HEAD).Trim()
 Write-Host ("HEAD        : " + $head)
 $dirty = (git -C $Here status --porcelain)
 if ($dirty) {
-    Write-Host 'WARNING: working tree has uncommitted changes - commit them first, or the tag will not describe the shipped code.' -ForegroundColor Yellow
+    if ($DryRun -or $AllowDirty) {
+        Write-Host 'WARNING: working tree has uncommitted changes - this is NOT a publishable tree.' -ForegroundColor Yellow
+    } else {
+        Fail 'working tree has uncommitted changes - commit them before creating a release tag'
+    }
 }
 $localTag = (git -C $Here tag -l $tag)
 if ($localTag) {
-    Write-Host ("local tag   : " + $tag + " exists (will be pushed if missing on the remote)")
+    $tagCommit = (git -C $Here rev-parse ($tag + '^{commit}')).Trim()
+    if ($tagCommit -ne $headFull) {
+        Fail ("local tag " + $tag + " points at " + $tagCommit.Substring(0, 12) + ", not HEAD " + $head)
+    }
+    Write-Host ("local tag   : " + $tag + " exists at HEAD (will be pushed if missing on the remote)")
 } else {
     Write-Host ("local tag   : " + $tag + " not created yet (will be created at HEAD)")
 }
@@ -241,6 +281,13 @@ if (-not $ghPath) {
     }
 }
 
+if ($authMode -and -not $DryRun) {
+    & $ghPath release view $tag --repo $Repo *> $null
+    if ($LASTEXITCODE -eq 0) {
+        Fail ("GitHub release " + $tag + " already exists - refusing to overwrite it; inspect or delete it deliberately")
+    }
+}
+
 # ---- 8. upload ---------------------------------------------------------------
 Step 'upload'
 # GitHub stores asset names ASCII-only: non-ASCII characters collapse to dots.
@@ -258,7 +305,7 @@ Set-Content -LiteralPath $shaStage -Value ($actual + '  ' + $assetZip) -Encoding
 $assets = @($zipStage, $shaStage)
 Write-Host ('assets      : ' + $assetZip + '  (+ .sha256.txt)')
 
-$ghArgs = @('release', 'create', $tag) + $assets + @('--repo', $Repo, '--title', $tag)
+$ghArgs = @('release', 'create', $tag) + $assets + @('--repo', $Repo, '--title', $tag, '--verify-tag')
 if ($NotesFile) { $ghArgs += @('--notes-file', $NotesFile) } else { $ghArgs += @('--generate-notes') }
 if ($Draft) { $ghArgs += '--draft' }
 if ($Prerelease) { $ghArgs += '--prerelease' }
@@ -266,12 +313,23 @@ if ($Prerelease) { $ghArgs += '--prerelease' }
 $pretty = 'gh ' + (($ghArgs | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' ')
 Write-Host $pretty
 
-if (-not $localTag) {
-    $tagCmd = 'git -C "' + $Here + '" tag -a ' + $tag + ' -m "' + $Version + '"'
-    Write-Host ''
-    Write-Host 'Also creating the annotated tag locally:'
-    Write-Host ('  ' + $tagCmd)
-    if (-not $DryRun) { git -C $Here tag -a $tag -m $Version }
+if (-not $DryRun) {
+    if (-not $localTag) {
+        $tagCmd = 'git -C "' + $Here + '" tag -a ' + $tag + ' -m "' + $Version + '"'
+        Write-Host ''
+        Write-Host 'Also creating the annotated tag locally:'
+        Write-Host ('  ' + $tagCmd)
+        git -C $Here tag -a $tag -m $Version
+    }
+    # Push the exact tag before creating the release.  gh must not create the
+    # remote tag from a different default-branch commit.
+    if ($SkipTagPush) {
+        Write-Host ('tag push   : skipped (-SkipTagPush); remote tag must already exist')
+    } else {
+        Write-Host ('pushing tag : ' + $Remote + ' ' + $tag)
+        git -C $Here push $Remote $tag
+        if ($LASTEXITCODE -ne 0) { Fail 'git push of release tag failed - release not created' }
+    }
 }
 
 if ($DryRun) {
@@ -286,7 +344,3 @@ if ($LASTEXITCODE -ne 0) { Fail 'gh release create failed - see the message abov
 Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ''
 Write-Host ('published   : https://github.com/' + $Repo + '/releases/tag/' + $tag) -ForegroundColor Green
-if (-not $Draft) {
-    Write-Host 'remember    : push the tag too (gh creates it on the remote; keep the local one):' 
-    Write-Host ('  git -C "' + $Here + '" push origin ' + $tag)
-}

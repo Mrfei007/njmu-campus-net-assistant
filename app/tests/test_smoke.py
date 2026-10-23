@@ -125,8 +125,6 @@ class SmokeTests(unittest.TestCase):
         from campus_net_assistant.version import VERSION
 
         duplicate_candidates = (
-            "README.md",
-            "使用说明.txt",
             "build_local.py",
             "pyproject.toml",
             "version_info.txt",
@@ -138,6 +136,8 @@ class SmokeTests(unittest.TestCase):
             with self.subTest(path=relative):
                 text = (ROOT / relative).read_text(encoding="utf-8")
                 self.assertNotIn(VERSION, text)
+        self.assertIn(VERSION, (ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn(VERSION, (ROOT / "使用说明.txt").read_text(encoding="utf-8"))
 
     def test_load_config_migrates_monitor_interval_to_two_minutes(self):
         from campus_net_assistant import config as config_module
