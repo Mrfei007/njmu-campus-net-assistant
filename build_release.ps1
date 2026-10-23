@@ -28,8 +28,10 @@ $ErrorActionPreference = 'Stop'
 $Here = $PSScriptRoot
 $App = Join-Path $Here 'app'
 
-# Default vendor (PyInstaller + deps) lives beside the repository, not inside it.
-if (-not $Vendor) { $Vendor = Join-Path $Here '..\archive\build_stage\work\campus-net-assistant\vendor' }
+# Default vendor (PyInstaller + deps) is supplied by the caller or the environment;
+# build dependencies are large and deliberately are not part of this repository.
+if (-not $Vendor) { $Vendor = $env:NJMU_DEPENDENCY_VENDOR }
+if (-not $Vendor) { $Vendor = Join-Path $Here '..\campus-net-assistant\vendor' }
 
 function Fail([string]$message) {
     Write-Host ''
@@ -96,17 +98,21 @@ if ($reported -ne $computed) { Fail "sha256 mismatch: manifest=$reported compute
 $buildId = Get-ChildItem -LiteralPath (Join-Path $App 'dist-builds') -Directory -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty Name
 
-# The package manifest must prove the signed Npcap installer was staged.  Do not
-# publish a zip that silently omits <program>\tools\npcap-*.exe.
+# The package manifest must prove the Npcap download guide was staged.  Npcap
+# itself is third-party software and must not be redistributed with the zip.
 $manifestPath = Get-ChildItem -LiteralPath (Join-Path $App ('dist-builds\' + $buildId)) -Filter '版本信息.json' -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1 -ExpandProperty FullName
 if (-not $manifestPath) { Fail "package manifest missing under dist-builds\$buildId" }
 $packageManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$npcapName = [string]$packageManifest.npcap_installer.name
-$npcapSha = [string]$packageManifest.npcap_installer.sha256
-$npcapSize = [int64]$packageManifest.npcap_installer.size_bytes
-if (-not $npcapName -or -not $npcapSha -or $npcapSize -le 0) {
-    Fail 'package manifest does not contain npcap_installer metadata'
+$npcapGuideName = [string]$packageManifest.npcap_guide.name
+$npcapGuideSha = [string]$packageManifest.npcap_guide.sha256
+$npcapGuideSize = [int64]$packageManifest.npcap_guide.size_bytes
+$npcapDownloadUrl = [string]$packageManifest.npcap_download_url
+if (-not $npcapGuideName -or -not $npcapGuideSha -or $npcapGuideSize -le 0) {
+    Fail 'package manifest does not contain npcap_guide metadata'
+}
+if ($npcapDownloadUrl -ne 'https://npcap.com/dist/npcap-1.90.exe') {
+    Fail 'package manifest has an unexpected Npcap download URL'
 }
 
 # ---- 6. publish --------------------------------------------------------------
@@ -140,9 +146,10 @@ if (-not $NoCopy) {
         recorded_at = (Get-Date).ToString('yyyy-MM-ddTHH:mm:sszzz')
         source   = 'repo/app'
         bridge_sha256 = $bridgeSha
-        npcap_installer = $npcapName
-        npcap_installer_size = $npcapSize
-        npcap_installer_sha256 = $npcapSha
+        npcap_guide = $npcapGuideName
+        npcap_guide_size = $npcapGuideSize
+        npcap_guide_sha256 = $npcapGuideSha
+        npcap_download_url = $npcapDownloadUrl
         release_dir = $family
     }
     ($record | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $recordsDir "$version.json") -Encoding utf8

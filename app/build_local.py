@@ -36,14 +36,10 @@ SYSTEM_ROOT = Path(os.environ.get("SystemRoot", r"C:\Windows"))
 BRIDGE_SOURCE = ROOT / "src" / "campus_net_assistant" / "native" / "RawetherBridge.cs"
 BRIDGE_BINARY = BUILD_ROOT / "native" / "RawetherBridge.exe"
 NPCAP_BRIDGE_BINARY = ROOT / "src" / "campus_net_assistant" / "native" / "bin" / "NpcapBridge.exe"
-# Npcap's installer is redistributed inside the portable package so the first
-# workstation setup can use the "select installer…" flow without a second
-# download.  It is not a driver binary; Npcap is installed by its own signed
-# installer.  NJMU_NPCAP_INSTALLER allows a release build to point at a copy
-# outside the repository while the checked-in default keeps builds repeatable.
-NPCAP_INSTALLER = ROOT / "tools" / "npcap-1.89.exe"
-NPCAP_INSTALLER_SIZE = 1_325_224
-NPCAP_INSTALLER_SHA256 = "8aed85e900d783d1308506e919587d3e540451947af8a82f2d04f819e44305cc"
+# Npcap is third-party software and is not redistributed with this package.
+# Ship a short guide instead; users download the installer from Nmap directly.
+NPCAP_GUIDE_NAME = "Npcap下载说明.txt"
+NPCAP_DOWNLOAD_URL = "https://npcap.com/dist/npcap-1.90.exe"
 VERSION_INFO_TEMPLATE = ROOT / "version_info.txt"
 GENERATED_VERSION_INFO = METADATA_ROOT / "version_info.txt"
 
@@ -166,29 +162,20 @@ def validate_packaged_bridge(package_dir: Path) -> str:
     return file_sha256(bridge)
 
 
-def stage_npcap_installer(package_dir: Path) -> dict[str, object]:
-    """Copy the signed Npcap installer to <package>/tools for first-run setup."""
-    override = os.environ.get("NJMU_NPCAP_INSTALLER", "").strip()
-    source = Path(override) if override else NPCAP_INSTALLER
+def stage_npcap_guide(package_dir: Path) -> dict[str, object]:
+    """Copy the download-only Npcap guidance into <package>/ Npcap下载说明.txt."""
+    source = ROOT / NPCAP_GUIDE_NAME
     if not source.is_file():
-        raise RuntimeError(
-            f"缺少 Npcap 安装包：{source}；可设置 NJMU_NPCAP_INSTALLER 指向 npcap-*.exe"
-        )
-    if source.suffix.lower() != ".exe" or source.stat().st_size != NPCAP_INSTALLER_SIZE:
-        raise RuntimeError(f"Npcap 安装包大小不符：{source}")
-    source_sha = file_sha256(source)
-    if source_sha != NPCAP_INSTALLER_SHA256:
-        raise RuntimeError(f"Npcap 安装包 SHA-256 不符：{source} ({source_sha})")
-    destination = package_dir / "tools" / source.name
-    destination.parent.mkdir(parents=True, exist_ok=True)
+        raise RuntimeError(f"缺少 Npcap 下载说明：{source}")
+    text = source.read_text(encoding="utf-8")
+    if NPCAP_DOWNLOAD_URL not in text:
+        raise RuntimeError(f"Npcap 下载说明缺少下载地址：{NPCAP_DOWNLOAD_URL}")
+    destination = package_dir / NPCAP_GUIDE_NAME
     shutil.copy2(source, destination)
-    copied_sha = file_sha256(destination)
-    if copied_sha != NPCAP_INSTALLER_SHA256:
-        raise RuntimeError(f"Npcap 安装包复制后校验失败：{destination}")
     return {
-        "name": source.name,
-        "size_bytes": source.stat().st_size,
-        "sha256": copied_sha,
+        "name": NPCAP_GUIDE_NAME,
+        "size_bytes": destination.stat().st_size,
+        "sha256": file_sha256(destination),
     }
 
 
@@ -264,9 +251,8 @@ run(
 
 package_dir = DIST_ROOT / PRODUCT_NAME
 (package_dir / "使用说明.txt").write_text(render_usage_guide(), encoding="utf-8")
-# Keep the signed installer next to the app so the Npcap setup dialog can find
-# <program>/tools/npcap-*.exe without internet access.
-npcap_installer = stage_npcap_installer(package_dir)
+# Npcap is not redistributed; ship a short download guide at the package root.
+npcap_guide = stage_npcap_guide(package_dir)
 # Authentication instructions are consolidated into the usage guide.
 manifest = {
     "product": PRODUCT_NAME,
@@ -274,7 +260,8 @@ manifest = {
     "platform": "Windows x64",
     "package_type": "PyInstaller onedir",
     "built_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-    "npcap_installer": npcap_installer,
+    "npcap_guide": npcap_guide,
+    "npcap_download_url": NPCAP_DOWNLOAD_URL,
 }
 (package_dir / "版本信息.json").write_text(
     json.dumps(manifest, ensure_ascii=False, indent=2),

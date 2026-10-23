@@ -17,7 +17,7 @@ repo/
   app/                    产品源码树（构建的根目录）
     src/campus_net_assistant/   Python 包（含 native/bin/NpcapBridge.exe、RawetherBridge.exe）
     tests/                      隔离回归测试
-    tools/                      辅助脚本（桥接构建、基线审查等）
+    tools/                      辅助脚本（桥接构建、发布校验等）
     build_local.py              PyInstaller onedir 打包 + 校验 + 出 zip
     version_info.txt            exe 版本资源模板
     使用说明.txt                随包说明（构建时替换 {{VERSION}}）
@@ -28,23 +28,21 @@ repo/
   DEVELOPING.md             本文件
 ```
 
-依赖（PySide6 / shiboken6 / PyInstaller）体积约 650 MB，**不进版本库**，放在仓库外：
-
-```
-<工作区>/archive/build_stage/work/campus-net-assistant/vendor
-```
+依赖（PySide6 / shiboken6 / PyInstaller）体积约 650 MB，**不进版本库**。构建时通过
+`-Vendor` 指向一个包含这些依赖的目录；也可以设置环境变量 `NJMU_DEPENDENCY_VENDOR`，
+再直接运行 `app/build_local.py`。公开仓库不预设任何机器上的私有目录。
 
 ## 出包
 
 ```powershell
-pwsh ./build_release.ps1                 # 构建，并把 zip + sha256 放到 <工作区>/releases/<主.次>.x/
+pwsh ./build_release.ps1                 # 构建，并把 zip + sha256 放到发布目录
 pwsh ./build_release.ps1 -NoCopy         # 只构建，不复制（试构建用）
 pwsh ./build_release.ps1 -Vendor '<自定义 vendor 目录>'
 pwsh ./build_release.ps1 -RebuildBridge  # 强制重编 native/bin/NpcapBridge.exe
 ```
 
-`-Vendor` 默认由 `$PSScriptRoot` 推出（仓库上级的 `archive/build_stage/work/...`），不再写死盘符路径；
-换机器时用 `-Vendor` 指定即可。
+`-Vendor` 指向包含 PyInstaller / PySide6 / shiboken6 的目录；未指定时脚本读取
+`NJMU_DEPENDENCY_VENDOR`，再退回到仓库同级的 `campus-net-assistant/vendor`。
 
 脚本流程：读 `version.py` → 调 `build_local.py`（PyInstaller onedir + Rawether 桥编译 +
 GUI 冒烟检查 + 桥自检）→ 校验 sha256 → 复制发布包 → 在 `releases/<version>.json` 留记录。
@@ -53,10 +51,10 @@ GUI 冒烟检查 + 桥自检）→ 校验 sha256 → 复制发布包 → 在 `re
 
 | 内容 | 位置 | 是否进 git |
 |---|---|---|
-| 发布包本体 zip + `.sha256.txt` | `<工作区>/releases/<主.次>.x/`（如 `1.6.x`） | 否 |
+| 发布包本体 zip + `.sha256.txt` | `<发布目录>/releases/<主.次>.x/`（如 `1.6.x`） | 否 |
 | 发布记录索引 | `repo/releases/<version>.json` | **是** |
 
-即：**二进制留在工作区、索引进仓库**。`<主.次>.x` 由版本号自动推出（`1.6.3` → `1.6.x`），
+即：**二进制放在发布目录、索引进仓库**。`<主.次>.x` 由版本号自动推出（`1.6.3` → `1.6.x`），
 不需要手工建目录。
 
 ## 上传 GitHub Releases
@@ -87,9 +85,8 @@ sidecar 内容也按该名生成，下载后可直接校验。本地 `releases/`
 ## 版本规则
 
 - `version.py` 是唯一来源，`build_local.py` 会校验格式并写进 exe 资源。
-- **`CHANGELOG.md` 只列已发布的版本。** 开发中（已提交但未发布）的条目暂存在工作区的
-  `../整理记录/变更记录-未发布-1.6.x.md`；发布对应版本时，把该小节按"最新在最前"的顺序插回
-  `CHANGELOG.md` 顶部，`publish_release.ps1` 会自动取对应小节作为 Release 正文。
+- **`CHANGELOG.md` 只列已发布的版本。** 开发中的条目先留在本地，发布时按"最新在最前"的顺序
+  并入 `CHANGELOG.md`，不要提交未发布内容。
 - 1.5.x：补丁号递增（1.5.9.1、1.5.9.2…），只做点修。
 - **1.6**：保活会话身份与互斥体的根治版本。该版本重编 `NpcapBridge.exe`
   （`704b9dc0…` → `d5a55d3f…`），桥哈希变化会导致每台机器需重新做一次原生认证验证。
@@ -97,7 +94,7 @@ sidecar 内容也按该名生成，下载后可直接校验。本地 `releases/`
 
 ## 注意
 
-- 不要在 `archive/build_stage/` 或 `archive/product/` 里构建：这些是归档的旧流水线，源码树已过时。
+- 构建依赖、发布 zip 和本机运行状态都不进版本库；提交前用 `git status` / `git diff` 检查是否误带。
 - `NpcapBridge.exe` 自 1.5.8 起字节不变；若重编它，必须同步更新原生验证的版本/哈希判定。
 - 构建机需要：Python 3.12、.NET Framework 4.x 的 `csc.exe`（编译 Rawether 桥）、Npcap 驱动（运行期）。
-- 推送历史前先跑 `../整理记录/演练-git历史衔接.ps1`：它会重放提交、脱敏本机路径并核对树哈希。
+- Npcap 安装程序不随仓库或发布包分发；包内只放 `Npcap下载说明.txt`，让用户从官网下载。

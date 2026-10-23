@@ -68,7 +68,7 @@ from .scheduler import (
 from .status import read as read_status
 
 
-NPCAP_DOWNLOAD_URL = "https://npcap.com/dist/npcap-1.89.exe"
+NPCAP_DOWNLOAD_URL = "https://npcap.com/dist/npcap-1.90.exe"
 
 
 OPERATOR_OPTIONS = ("电信", "移动", "联通", "校园网")
@@ -924,23 +924,23 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _prompt_npcap_install(self) -> bool:
-        """工位有线需要 Npcap：让用户选择随程序提供的安装包并提权运行。"""
+        """工位有线需要 Npcap：引导用户从官网下载安装包并提权运行。"""
         program_dir = Path(sys.executable).resolve().parent
-        tools_dir = program_dir / "tools"
         while not npcap_detected():
             box = QMessageBox(self)
             box.setWindowTitle("需要安装 Npcap")
             box.setIcon(QMessageBox.Warning)
             box.setText("工位有线网需要先安装 Npcap 才能使用。")
             box.setInformativeText(
-                "请选择随程序一起提供的 Npcap 安装包（npcap-x.yy.exe）。\n"
-                "程序会以管理员权限运行它；安装完成后回到本窗口点“重新检测”。")
+                "请从 https://npcap.com/dist/npcap-1.90.exe 下载安装包。\n"
+                "下载后点“选择安装包…”并选中它；也可以查看程序目录中的 Npcap下载说明.txt。\n"
+                "安装完成后回到本窗口点“重新检测”。")
             choose = box.addButton("选择安装包…", QMessageBox.AcceptRole)
             recheck = box.addButton("重新检测", QMessageBox.ActionRole)
             box.addButton("取消", QMessageBox.RejectRole)
             box.exec()
             if box.clickedButton() is choose:
-                start_dir = str(tools_dir if tools_dir.is_dir() else program_dir)
+                start_dir = str(program_dir)
                 selected, _ = QFileDialog.getOpenFileName(
                     self, "选择 Npcap 安装包", start_dir,
                     "Npcap 安装包 (npcap-*.exe);;可执行程序 (*.exe)")

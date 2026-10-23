@@ -90,31 +90,38 @@ if ($record.PSObject.Properties.Name -contains 'size_bytes' -and $size -ne [int6
 }
 Write-Host ("OK          : sha256 and size match the version index (" + [math]::Round($size / 1MB, 1) + " MB)")
 
-# GitHub releases are downloaded by end users; a package without the signed
-# Npcap installer still "works" until the first workstation setup, then fails.
-# Refuse to publish unless exactly one tools/npcap-*.exe is present and matches
-# the version index when that index records its hash.
+# Npcap is third-party software and must not be redistributed with the zip.
+# Require a download guide instead, and verify its URL and recorded hash.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
-    $npcapEntries = @($archive.Entries | Where-Object { $_.FullName -match '/tools/npcap-[^/]+\.exe$' })
-    if ($npcapEntries.Count -ne 1) {
-        Fail ("release zip must contain exactly one tools/npcap-*.exe, found " + $npcapEntries.Count)
+    $npcapExeEntries = @($archive.Entries | Where-Object { $_.FullName -match '/tools/npcap-[^/]+\.exe$' })
+    if ($npcapExeEntries.Count -ne 0) {
+        Fail ("release zip must not contain a bundled Npcap installer, found " + $npcapExeEntries.Count)
     }
-    $npcapEntry = $npcapEntries[0]
-    if ($npcapEntry.Length -le 0) { Fail "release zip contains an empty Npcap installer" }
-    $stream = $npcapEntry.Open()
+    $guideEntries = @($archive.Entries | Where-Object { $_.FullName -match '/Npcap下载说明\.txt$' })
+    if ($guideEntries.Count -ne 1) {
+        Fail ("release zip must contain exactly one Npcap下载说明.txt, found " + $guideEntries.Count)
+    }
+    $guideEntry = $guideEntries[0]
+    if ($guideEntry.Length -le 0) { Fail "release zip contains an empty Npcap下载说明.txt" }
+    $reader = New-Object System.IO.StreamReader($guideEntry.Open(), [System.Text.Encoding]::UTF8)
+    try { $guideText = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    if ($guideText -notmatch 'https://npcap\.com/dist/npcap-1\.90\.exe') {
+        Fail "Npcap下载说明.txt does not contain the expected 1.90 download URL"
+    }
+    $stream = $guideEntry.Open()
     try {
         $hasher = [System.Security.Cryptography.SHA256]::Create()
-        try { $npcapActual = ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLower() }
+        try { $guideActual = ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLower() }
         finally { $hasher.Dispose() }
     } finally { $stream.Dispose() }
-    if ($record.PSObject.Properties.Name -contains 'npcap_installer_sha256') {
-        if ($npcapActual -ne ([string]$record.npcap_installer_sha256).ToLower()) {
-            Fail ("Npcap installer hash mismatch`n    record: " + $record.npcap_installer_sha256 + "`n    actual: " + $npcapActual)
+    if ($record.PSObject.Properties.Name -contains 'npcap_guide_sha256') {
+        if ($guideActual -ne ([string]$record.npcap_guide_sha256).ToLower()) {
+            Fail ("Npcap guide hash mismatch`n    record: " + $record.npcap_guide_sha256 + "`n    actual: " + $guideActual)
         }
     }
-    Write-Host ("Npcap      : " + $npcapEntry.FullName + " (" + [math]::Round($npcapEntry.Length / 1MB, 2) + " MB, sha256 ok)")
+    Write-Host ("Npcap      : " + $guideEntry.FullName + " (download guide, sha256 ok)")
 } finally {
     $archive.Dispose()
 }
