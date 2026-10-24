@@ -10,9 +10,9 @@
 依赖仓库自带的 vendor\\PyInstaller（优先用环境变量 NJMU_DEPENDENCY_VENDOR，
 与 build_local.py 一致），不依赖系统里是否 pip 装了 PyInstaller。
 
-为什么要单独一个脚本：NpcapBridge.exe 是 --onefile 产物，`build_local.py`
-只是把它当二进制复制进发布包；桥的代码改了却忘了重编，发布包里就是旧桥
-（1.5.8–1.5.9.2 一直如此）。1.6 起把重编做成显式、可检查的一步。
+本脚本供维护者重建桥接程序：NpcapBridge.exe 是 --onefile 产物，`build_local.py`
+只把它当二进制复制进发布包；桥接源码改动后必须先重编，否则包内仍是旧桥。
+因此这里把重编做成显式、可检查的一步。
 """
 
 from __future__ import annotations
