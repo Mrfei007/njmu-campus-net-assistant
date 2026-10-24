@@ -5,7 +5,7 @@
 
 **最新版本 1.6.4 · Windows 10 / 11 x64 · 非学校官方客户端**
 
-**[⬇ 下载 1.6.4](https://github.com/1204799421-bit/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)** ·
+**[⬇ 下载 1.6.4](https://github.com/Mrfei007/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)** ·
 [更新内容](#164-更新内容相对-1592) · [安装步骤](#安装与首次设置)
 
 下载 ZIP 后：完整解压 → 运行 `NJMU校园网自动化连接程序.exe`。不要只复制 EXE，也不要在压缩包内运行。
@@ -18,9 +18,9 @@
 
 ## 下载
 
-直接下载：**[NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip](https://github.com/1204799421-bit/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)**（约 54.2 MB / 51.6 MiB）
+直接下载：**[NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip](https://github.com/Mrfei007/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)**（约 54.2 MB / 51.6 MiB）
 
-也可以打开 [Releases](https://github.com/1204799421-bit/njmu-campus-net-assistant/releases) 页，在 **1.6.4** 的 Assets 里下载：
+也可以打开 [Releases](https://github.com/Mrfei007/njmu-campus-net-assistant/releases) 页，在 **1.6.4** 的 Assets 里下载：
 
 ```
 NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip
