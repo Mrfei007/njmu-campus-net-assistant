@@ -18,7 +18,7 @@
 
 ## 下载
 
-直接下载：**[NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip](https://github.com/Mrfei007/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)**（约 54.2 MB / 51.6 MiB）
+直接下载：**[NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip](https://github.com/Mrfei007/njmu-campus-net-assistant/releases/download/v1.6.4/NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip)**（约 54.2 MB / 51.7 MiB）
 
 也可以打开 [Releases](https://github.com/Mrfei007/njmu-campus-net-assistant/releases) 页，在 **1.6.4** 的 Assets 里下载：
 
@@ -186,6 +186,14 @@ Windows 凭据管理器（凭据目标以 `NJMU` 开头）。凭据仅保存在�
 | 1.3.1 | 2026-09-22 | 首个私有发布版 |
 
 逐条记录见 [CHANGELOG.md](CHANGELOG.md)。1.5.2–1.5.9.1 的产物没有纳入版本库，只保留了变更回溯记录。
+
+---
+
+## 许可证
+
+本项目自有代码采用 **MIT License**，见 [LICENSE](LICENSE)。
+
+发布包还包含 PySide6 / Qt、Python、websocket-client、PyInstaller 等第三方组件，它们仍按各自许可证分发；Qt/PySide6 的 LGPL 说明和许可证文本见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [LICENSES](LICENSES/)。Npcap 不随项目分发，需自行从官网下载并遵守其许可证。
 
 ---
 

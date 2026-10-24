@@ -18,6 +18,9 @@
 2026-10-23 重打包：按 Npcap 许可要求移除包内 `tools\npcap-1.89.exe`，新增 `Npcap下载说明.txt`，首次使用从
 https://npcap.com/dist/npcap-1.90.exe 下载；程序文件未变。
 
+2026-10-24 补许可证：加入 MIT `LICENSE`、`THIRD_PARTY_NOTICES.md` 和 `LICENSES/`（含 Qt/PySide6 的
+LGPL 文本及 PyInstaller/websocket-client 等第三方许可证）；程序文件未变。
+
 ## 1.6.3 — 2026-10-21
 
 - 断线在监测同轮内确认并恢复联网，减少“检测到断了但没恢复”的延迟。
@@ -63,6 +66,8 @@ SHA-256 仍为 `704b9dc0…`（未重编）；GUI 冒烟检查通过。
 并精简了使用说明（去掉技术细节），程序文件本身未改动（最初发布版 SHA-256 `8fa68f93…`）。
 2026-10-23 再次重打包：按 Npcap 许可要求移除该安装程序，改为 `Npcap下载说明.txt`，用户从
 https://npcap.com/dist/npcap-1.90.exe 自行下载；程序文件未变。
+
+2026-10-24 补许可证：加入 MIT `LICENSE`、`THIRD_PARTY_NOTICES.md` 和 `LICENSES/`；程序文件未变。
 
 ## 1.5.9.1 — 2026-10-20
 

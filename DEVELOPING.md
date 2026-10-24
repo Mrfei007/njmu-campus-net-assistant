@@ -25,6 +25,9 @@ repo/
   build_release.ps1         从本仓库出发布包（zip + sha256）
   publish_release.ps1       把已构建的发布包上传到 GitHub Releases
   CHANGELOG.md              版本变更记录（发版说明的正文来源）
+  LICENSE                   项目自有代码的 MIT 许可证
+  THIRD_PARTY_NOTICES.md    第三方组件与 Qt/PySide6 LGPL 说明
+  LICENSES/                 第三方许可证全文（构建时随包复制）
   DEVELOPING.md             本文件
 ```
 

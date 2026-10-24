@@ -40,6 +40,9 @@ NPCAP_BRIDGE_BINARY = ROOT / "src" / "campus_net_assistant" / "native" / "bin" /
 # Ship a short guide instead; users download the installer from Nmap directly.
 NPCAP_GUIDE_NAME = "Npcap下载说明.txt"
 NPCAP_DOWNLOAD_URL = "https://npcap.com/dist/npcap-1.90.exe"
+LICENSE_FILE = ROOT.parent / "LICENSE"
+THIRD_PARTY_NOTICES = ROOT.parent / "THIRD_PARTY_NOTICES.md"
+LICENSES_DIR = ROOT.parent / "LICENSES"
 VERSION_INFO_TEMPLATE = ROOT / "version_info.txt"
 GENERATED_VERSION_INFO = METADATA_ROOT / "version_info.txt"
 
@@ -179,6 +182,17 @@ def stage_npcap_guide(package_dir: Path) -> dict[str, object]:
     }
 
 
+def stage_license_notices(package_dir: Path) -> None:
+    """Ship the project license and third-party license texts with the package."""
+    for source in (LICENSE_FILE, THIRD_PARTY_NOTICES):
+        if not source.is_file():
+            raise RuntimeError(f"缺少许可证文件：{source}")
+        shutil.copy2(source, package_dir / source.name)
+    if not LICENSES_DIR.is_dir():
+        raise RuntimeError(f"缺少第三方许可证目录：{LICENSES_DIR}")
+    shutil.copytree(LICENSES_DIR, package_dir / "LICENSES")
+
+
 def remove_previous_package() -> None:
     """Remove only the known build output, retrying transient AV file locks."""
     target = (DIST_ROOT / PRODUCT_NAME).resolve()
@@ -253,6 +267,8 @@ package_dir = DIST_ROOT / PRODUCT_NAME
 (package_dir / "使用说明.txt").write_text(render_usage_guide(), encoding="utf-8")
 # Npcap is not redistributed; ship a short download guide at the package root.
 npcap_guide = stage_npcap_guide(package_dir)
+# Keep MIT and third-party license texts with every shipped copy.
+stage_license_notices(package_dir)
 # Authentication instructions are consolidated into the usage guide.
 manifest = {
     "product": PRODUCT_NAME,
@@ -260,6 +276,9 @@ manifest = {
     "platform": "Windows x64",
     "package_type": "PyInstaller onedir",
     "built_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    "license": "MIT",
+    "license_file": "LICENSE",
+    "third_party_notices": "THIRD_PARTY_NOTICES.md",
     "npcap_guide": npcap_guide,
     "npcap_download_url": NPCAP_DOWNLOAD_URL,
 }

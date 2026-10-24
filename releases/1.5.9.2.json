@@ -2,13 +2,13 @@
   "version": "1.5.9.2",
   "build_id": "20261021-115824",
   "zip": "NJMU校园网自动化连接程序-1.5.9.2-Windows-x64.zip",
-  "size_bytes": 54139940,
-  "sha256": "3f367305bc97ca16c9f11cb76861ffe3153d45e18f310ba447e596301d7244f0",
+  "size_bytes": 54186514,
+  "sha256": "574744d33c6e6f58d29e55cc608f34677b7c8be358b6a3ae10f4411ae844d6e2",
   "recorded_at": "2026-10-21T12:00:00+08:00",
-  "repacked_at": "2026-10-23T21:23:39+08:00",
+  "repacked_at": "2026-10-24T13:40:26+08:00",
   "source": "pre-repo build; revalidated from repo/app at tag v1.5.9.2",
   "notes": [
-    "2026-10-22 曾重打包加入 Npcap 1.89；2026-10-23 按 Npcap 许可要求移除安装程序，改为 Npcap下载说明.txt，用户从官网下载 1.90；程序文件未变。"
+    "2026-10-24 补许可证：加入 MIT LICENSE、THIRD_PARTY_NOTICES.md 和 LICENSES/（含 Qt/PySide6 LGPL 等第三方文本）；程序文件未变。"
   ],
   "npcap_guide": {
     "name": "Npcap下载说明.txt",
@@ -16,5 +16,9 @@
     "sha256": "a36a8bb9b922e1ae7ab6f4bb450d5d9a6ebf7223d8e0cfa43690e8ff2feaa089"
   },
   "npcap_download_url": "https://npcap.com/dist/npcap-1.90.exe",
-  "release_dir": "1.5.x"
+  "release_dir": "1.5.x",
+  "license": "MIT",
+  "license_file": "LICENSE",
+  "third_party_notices": "THIRD_PARTY_NOTICES.md",
+  "licenses_dir": "LICENSES"
 }

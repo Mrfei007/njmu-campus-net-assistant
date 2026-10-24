@@ -114,6 +114,13 @@ if (-not $npcapGuideName -or -not $npcapGuideSha -or $npcapGuideSize -le 0) {
 if ($npcapDownloadUrl -ne 'https://npcap.com/dist/npcap-1.90.exe') {
     Fail 'package manifest has an unexpected Npcap download URL'
 }
+if ([string]$packageManifest.license -ne 'MIT') {
+    Fail 'package manifest does not declare the MIT project license'
+}
+if ([string]$packageManifest.license_file -ne 'LICENSE' -or
+    [string]$packageManifest.third_party_notices -ne 'THIRD_PARTY_NOTICES.md') {
+    Fail 'package manifest does not declare license notice files'
+}
 
 # ---- 6. publish --------------------------------------------------------------
 Write-Host ''
@@ -150,6 +157,10 @@ if (-not $NoCopy) {
         npcap_guide_size = $npcapGuideSize
         npcap_guide_sha256 = $npcapGuideSha
         npcap_download_url = $npcapDownloadUrl
+        license = 'MIT'
+        license_file = 'LICENSE'
+        third_party_notices = 'THIRD_PARTY_NOTICES.md'
+        licenses_dir = 'LICENSES'
         release_dir = $family
     }
     ($record | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $recordsDir "$version.json") -Encoding utf8

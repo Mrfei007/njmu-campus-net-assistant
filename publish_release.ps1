@@ -122,6 +122,21 @@ try {
         }
     }
     Write-Host ("Npcap      : " + $guideEntry.FullName + " (download guide, sha256 ok)")
+
+    # Every shipped copy must carry the MIT license and third-party notices.
+    $licenseEntries = @($archive.Entries | Where-Object { $_.FullName -match '/LICENSE$' })
+    if ($licenseEntries.Count -ne 1) {
+        Fail ("release zip must contain exactly one LICENSE, found " + $licenseEntries.Count)
+    }
+    $noticeEntries = @($archive.Entries | Where-Object { $_.FullName -match '/THIRD_PARTY_NOTICES\.md$' })
+    if ($noticeEntries.Count -ne 1) {
+        Fail ("release zip must contain exactly one THIRD_PARTY_NOTICES.md, found " + $noticeEntries.Count)
+    }
+    $licenseTextEntries = @($archive.Entries | Where-Object { $_.FullName -match '/LICENSES/[^/]+$' })
+    if ($licenseTextEntries.Count -lt 1) {
+        Fail 'release zip must contain LICENSES/ with third-party license texts'
+    }
+    Write-Host ("License    : LICENSE + THIRD_PARTY_NOTICES.md + " + $licenseTextEntries.Count + " third-party text(s)")
 } finally {
     $archive.Dispose()
 }
