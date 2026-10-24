@@ -21,6 +21,8 @@ https://npcap.com/dist/npcap-1.90.exe 下载；程序文件未变。
 2026-10-24 补许可证：加入 MIT `LICENSE`、`THIRD_PARTY_NOTICES.md` 和 `LICENSES/`（含 Qt/PySide6 的
 LGPL 文本及 PyInstaller/websocket-client 等第三方许可证）；程序文件未变。
 
+2026-10-24 更新使用说明：移除历史版本变更记录，改为当前功能说明；程序文件未变。
+
 ## 1.6.3 — 2026-10-21
 
 - 断线在监测同轮内确认并恢复联网，减少“检测到断了但没恢复”的延迟。
