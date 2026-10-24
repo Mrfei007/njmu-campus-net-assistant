@@ -136,7 +136,9 @@ class SmokeTests(unittest.TestCase):
                 text = (ROOT / relative).read_text(encoding="utf-8")
                 self.assertNotIn(VERSION, text)
         self.assertIn(VERSION, (ROOT / "README.md").read_text(encoding="utf-8"))
-        self.assertIn(VERSION, (ROOT / "使用说明.txt").read_text(encoding="utf-8"))
+        usage_template = (ROOT / "使用说明.txt").read_text(encoding="utf-8")
+        self.assertIn("{{VERSION}}", usage_template)
+        self.assertIn(VERSION, usage_template.replace("{{VERSION}}", VERSION))
 
     def test_load_config_migrates_monitor_interval_to_two_minutes(self):
         from campus_net_assistant import config as config_module
