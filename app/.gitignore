@@ -35,14 +35,6 @@ native-keepalive-state.json
 *.sqlite3
 *.db
 
-# Machine-specific work notes and deployment helpers
-findings.md
-progress.md
-task_plan.md
-design-qa.md
-qa-automation-card.png
-tools/deploy_wake_release.ps1
-
 # Editor and OS metadata
 .idea/
 .vscode/
