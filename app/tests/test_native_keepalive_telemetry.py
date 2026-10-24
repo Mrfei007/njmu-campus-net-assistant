@@ -19,8 +19,8 @@ from campus_net_assistant import npcap_backend, npcap_bridge
 
 class TelemetryExitTests(unittest.TestCase):
     def setUp(self):
-        # Workspace-local temp dir: the DSH sandbox rejects the 0o700 ACL used
-        # by Windows tempfile.TemporaryDirectory.
+        # Keep test files under the workspace: some Windows environments reject
+        # the 0o700 ACL used by tempfile.TemporaryDirectory.
         base = Path(__file__).resolve().parents[1] / ".test-temp"
         root = base / f"bridge-{time.time_ns()}"
         root.mkdir(parents=True, exist_ok=True)

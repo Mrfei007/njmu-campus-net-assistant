@@ -269,8 +269,8 @@ class DetailedProbeTests(unittest.TestCase):
 
 class KeepaliveHealthTests(unittest.TestCase):
     def setUp(self):
-        # Keep test files under the workspace: the DSH file sandbox rejects the
-        # 0o700 ACL that Windows tempfile.TemporaryDirectory creates.
+        # Keep test files under the workspace: some Windows environments reject
+        # the 0o700 ACL that tempfile.TemporaryDirectory creates.
         folder = Path(__file__).resolve().parents[1] / ".test-temp"
         folder.mkdir(parents=True, exist_ok=True)
         self.path = folder / f"health-{time.time_ns()}.json"

@@ -210,7 +210,7 @@ def _analysis_for_scripts(files: list[dict[str, object]], bodies: dict[str, byte
         "identifiers": identifiers,
         "notes": [
             "仅统计静态 JavaScript 中的标识符出现次数，不包含运行时会话值。",
-            "请将本 ZIP 回传给 Codex 进行离线代码分析。",
+            "请将本 ZIP 保存到本地，供后续离线分析使用。",
         ],
     }
 
