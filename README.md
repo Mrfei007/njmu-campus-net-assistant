@@ -194,9 +194,3 @@ Windows 凭据管理器（凭据目标以 `NJMU` 开头）。凭据仅保存在�
 本项目自有代码采用 **MIT License**，见 [LICENSE](LICENSE)。
 
 发布包还包含 PySide6 / Qt、Python、websocket-client、PyInstaller 等第三方组件，它们仍按各自许可证分发；Qt/PySide6 的 LGPL 说明和许可证文本见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [LICENSES](LICENSES/)。Npcap 不随项目分发，需自行从官网下载并遵守其许可证。
-
----
-
-## 开发与发布
-
-源码自 1.5.9.2 起以本仓库为唯一真源。源码结构、构建出包、GitHub Release 上传流程见 [DEVELOPING.md](DEVELOPING.md)。
