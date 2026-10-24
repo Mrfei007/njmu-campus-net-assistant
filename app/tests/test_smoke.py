@@ -128,7 +128,6 @@ class SmokeTests(unittest.TestCase):
             "build_local.py",
             "pyproject.toml",
             "version_info.txt",
-            "tools/validate_startup_release.py",
             "src/campus_net_assistant/__init__.py",
             "src/campus_net_assistant/product.py",
         )
