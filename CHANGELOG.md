@@ -25,6 +25,8 @@ LGPL 文本及 PyInstaller/websocket-client 等第三方许可证）；程序文
 
 2026-10-26 更正第三方组件清单：websocket-client 为 Apache-2.0，补充 PyInstaller 运行时 hooks 和 pywin32-ctypes 的许可说明，移除未填版权信息的通用 BSD 模板；程序文件未变。
 
+同日为 1.3.1、1.4.3、1.5.9.2、1.6.4 四个发布包统一补充完整 Python Windows 许可、Qt 版权与内嵌组件条款、OpenSSL / libffi 说明及对应源码入口；Qt Virtual Keyboard 单独标明 GPLv3。仅更新许可文件及打包元数据，可执行文件、运行库和使用说明未变。
+
 ## 1.6.3 — 2026-10-21
 
 - 断线在监测同轮内确认并恢复联网，减少“检测到断了但没恢复”的延迟。

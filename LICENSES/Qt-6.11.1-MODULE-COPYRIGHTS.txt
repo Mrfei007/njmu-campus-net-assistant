@@ -1,0 +1,59 @@
+Original copyright/license headers of representative distributed Qt modules and PDFium fonts.
+These supplement, not replace, all component/third-party license texts.
+
+SOURCE: https://raw.githubusercontent.com/qt/qtsvg/v6.11.1/src/svg/qsvgrenderer.cpp
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtbase/v6.11.1/src/opengl/qopenglbuffer.cpp
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+SOURCE: https://raw.githubusercontent.com/qt/qtdeclarative/v6.11.1/src/qml/qml/qqmlengine.cpp
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant
+
+SOURCE: https://raw.githubusercontent.com/qt/qtbase/v6.11.1/src/network/access/qnetworkaccessmanager.cpp
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtbase/v6.11.1/src/gui/kernel/qguiapplication.cpp
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+SOURCE: https://raw.githubusercontent.com/qt/qtbase/v6.11.1/src/corelib/kernel/qobject.cpp
+// Copyright (C) 2021 The Qt Company Ltd.
+// Copyright (C) 2016 Intel Corporation.
+// Copyright (C) 2013 Olivier Goffart <ogoffart@woboq.com>
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtbase/v6.11.1/src/widgets/kernel/qapplication.cpp
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtdeclarative/v6.11.1/src/quick/items/qquickitem.cpp
+// Copyright (C) 2021 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtwebengine/v6.11.1/src/pdf/qpdfdocument.cpp
+// Copyright (C) 2020 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
+SOURCE: https://raw.githubusercontent.com/qt/qtvirtualkeyboard/v6.11.1/src/virtualkeyboard/qvirtualkeyboardinputcontext.cpp
+// Copyright (C) 2016 The Qt Company Ltd.
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
+// Qt-Security score:significant reason:default
+
+SOURCE: https://raw.githubusercontent.com/qt/qtwebengine-chromium/58c11ad487f8a237cf0ac71cc3e818b52db150df/chromium/third_party/pdfium/core/fxge/fontdata/chromefontdata/chromefontdata.h
+// Copyright 2015 The PDFium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+// Original code copyright 2014 Foxit Software Inc. http://www.foxitsoftware.com
