@@ -28,17 +28,6 @@ NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip
 
 **不要**下载 Assets 里自动生成的 `Source code` 压缩包——那是源码，不能直接运行。
 
-可选：校验下载完整性。在下载目录打开 PowerShell：
-
-```powershell
-Get-FileHash .\NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip -Algorithm SHA256
-Get-Content .\NJMU-CampusNet-Assistant-1.6.4-Windows-x64.zip.sha256.txt
-```
-
-将输出的 Hash 与 `.sha256.txt` 中的值比较（字母大小写可忽略）；不一致时不要运行，重新下载后再检查。校验用于确认下载完整，不代表程序绝对安全。
-
-> 发布包使用英文文件名，便于下载与校验；解压后的文件夹仍为中文名，不影响使用。
-
 ---
 
 ## 1.6.4 更新内容（相对 1.5.9.2）
