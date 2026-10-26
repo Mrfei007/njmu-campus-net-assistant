@@ -9,9 +9,15 @@ MIT License **不改变**发布包内第三方组件各自的许可证；这些�
 |---|---|---|---|
 | PySide6 / Qt / shiboken6 | 6.11.1 | LGPL-3.0-only（也提供 GPL-2.0/GPL-3.0/商业许可） | 版权归 The Qt Company 及 Qt/PySide6 贡献者所有。以动态 DLL 形式随发布包分发。源码与许可信息见 [pyside.org](https://pyside.org) 和 [Qt 许可说明](https://www.qt.io/licensing/open-source-lgpl-obligations)。 |
 | Python | 3.12.x | PSF-2.0 | 发布包内的 Python 运行时来自官方发行版。 |
-| websocket-client | 1.9.0 | BSD-3-Clause | 仅用于与校园网认证服务通信。 |
-| PyInstaller | 6.21.0 | GPL-2.0-or-later，含 bootloader 例外 | 仅使用其打包后的 bootloader 和运行时；不是项目自有代码。 |
+| websocket-client | 1.9.0 | Apache-2.0 | 用于与本机 Chrome / Edge 的调试接口（CDP）通信；许可证见 `LICENSES/websocket-client-LICENSE.txt`。 |
+| PyInstaller | 6.21.0 | GPL-2.0-or-later，含 bootloader 例外；运行时 hooks 为 Apache-2.0 | 用于打包；发布程序包含其 bootloader、加载器及运行时 hooks。完整条款见 `LICENSES/PyInstaller-COPYING.txt`；Apache-2.0 全文另见 `LICENSES/websocket-client-LICENSE.txt`。 |
 | Microsoft Visual C++ Runtime | 随 PySide6/Qt 提供 | Microsoft 可再分发组件条款 | 由 Qt/PySide6 官方 Windows 包附带。 |
+
+## 构建依赖
+
+| 组件 | 版本 | 许可证 | 说明 |
+|---|---|---|---|
+| pywin32-ctypes | 0.2.3 | BSD-3-Clause | PyInstaller 的 Windows 构建依赖；版权归 Enthought, Inc. 所有，原始许可证见 `LICENSES/pywin32-ctypes-LICENSE.txt`。 |
 
 ## 不随项目分发的组件
 
@@ -26,7 +32,6 @@ MIT License **不改变**发布包内第三方组件各自的许可证；这些�
 
 - [LGPL-3.0.txt](LICENSES/LGPL-3.0.txt)
 - [GPL-3.0.txt](LICENSES/GPL-3.0.txt)
-- [BSD-3-Clause.txt](LICENSES/BSD-3-Clause.txt)
 - [PSF-2.0.txt](LICENSES/PSF-2.0.txt)
 - [PyInstaller-COPYING.txt](LICENSES/PyInstaller-COPYING.txt)
 - [websocket-client-LICENSE.txt](LICENSES/websocket-client-LICENSE.txt)
